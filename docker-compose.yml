@@ -1,0 +1,6 @@
+﻿services:
+  ttlockdotnetasp:
+    image: ttlockdotnetasp
+    build:
+      context: .
+      dockerfile: TTLockDotnetASP/Dockerfile
