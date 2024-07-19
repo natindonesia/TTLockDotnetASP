@@ -1,1 +1,65 @@
 ﻿
+using Console;
+using Linux.Bluetooth;
+using Linux.Bluetooth.Extensions;
+using Shared;
+using Shared.Enums;
+
+Adapter? adapter = (await BlueZManager.GetAdaptersAsync()).FirstOrDefault();
+if (adapter == null)
+{
+    System.Console.WriteLine("No Bluetooth adapter found.");
+    return;
+}
+
+
+adapter.DeviceFound +=  async (sender, eventArgs) =>
+{
+    var properties = await eventArgs.Device.GetAllAsync();
+    System.Console.WriteLine($"Device found: {properties.Name} ({properties.Address})");
+};
+await adapter.StartDiscoveryAsync();
+
+System.Console.WriteLine("Press Enter to stop discovery.");
+// ReadLine is blocking the thread until the user presses Enter, so we use async Task.Run to keep the event handler running.
+await Task.Run(System.Console.ReadLine);
+
+
+await adapter.StopDiscoveryAsync();
+
+var devices = await adapter.GetDevicesAsync();
+List<Device1Properties> deviceProperties = new List<Device1Properties>();
+List<TTDevice> ttDevices = new List<TTDevice>();
+
+foreach (var device in devices)
+{
+    var properties = await device.GetAllAsync();
+    deviceProperties.Add(properties);
+    var linuxBluetoothDevice = await LinuxBluetoothDevice.FromDevice(device);
+    var ttDevice = TTDevice.FromBluetoothDevice(linuxBluetoothDevice);
+    if( ttDevice != null && ttDevice.LockType != LockType.UNKNOWN) ttDevices.Add(ttDevice);
+}
+
+System.Console.WriteLine("Devices found:");
+foreach (var device in ttDevices)
+{
+    while (true)
+    {
+        try
+        {
+            await device.ReadBasicInfo();
+        }catch (Exception ex)
+        {
+            System.Console.WriteLine(ex.Message);
+            System.Console.WriteLine("Retrying...");
+            await Task.Delay(1000);
+            continue;
+        }
+        break;
+    }
+
+    System.Console.WriteLine(device);
+}
+
+
+
