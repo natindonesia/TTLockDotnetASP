@@ -2,7 +2,7 @@ namespace Shared;
 
 public abstract class BluetoothDevice : IDisposable
 {
-    public byte[] ManufacturerData { get; set; }
+    public byte[] RawData { get; set; } // Advertisement data
 
 
     public abstract Task<bool> HasService(string serviceUuid);

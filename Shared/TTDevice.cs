@@ -4,7 +4,6 @@ namespace Shared;
 
 public class TTDevice : IDisposable
 {
-
     protected string Id = "";
     protected string Uuid = "";
     public string Name = "unknown";
@@ -16,7 +15,7 @@ public class TTDevice : IDisposable
     protected string Rssi = "0";
     public sbyte ProtocolType = 0;
     public sbyte ProtocolVersion = 0;
-    public byte Scene = 0;
+    public sbyte Scene = 0;
     protected byte GroupId = 0;
     protected byte OrgId = 0;
     public LockType LockType = LockType.UNKNOWN;
@@ -24,8 +23,8 @@ public class TTDevice : IDisposable
     protected bool IsUnlock = false;
     protected bool HasEvents = true;
     protected bool IsSettingMode = false;
-    protected byte TxPowerLevel = 0;
-    protected byte BatteryCapacity = 0;
+    protected sbyte TxPowerLevel = 0;
+    protected sbyte BatteryCapacity = 0;
     protected long Date = 0;
 
     protected bool IsWristband,
@@ -36,6 +35,8 @@ public class TTDevice : IDisposable
         IsGlassLock,
         IsPadlock,
         IsCylinder,
+        IsLift,
+        IsPowerSaver,
         IsRemoteControlDevice = false;
 
     protected bool IsDfuMode = false;
@@ -43,161 +44,282 @@ public class TTDevice : IDisposable
     protected int RemoteUnlockSwitch = 0;
     protected int DisconnectStatus = 0;
     protected int ParkStatus = 0;
-    public static  byte GAP_ADTYPE_LOCAL_NAME_COMPLETE = 0X09;	//!< Complete local name
-    public static  byte GAP_ADTYPE_POWER_LEVEL = 0X0A;	//!< TX Power Level: 0xXX: -127 to +127 dBm
-    public static  byte GAP_ADTYPE_MANUFACTURER_SPECIFIC = (byte) 0XFF; //!< Manufacturer Specific Data: first 2 octets contain the Company Inentifier Code followed by the additional manufacturer specific data
+    public const sbyte GAP_ADTYPE_LOCAL_NAME_COMPLETE = 9; //!< Complete local name
+    public const sbyte GAP_ADTYPE_POWER_LEVEL = 10; //!< TX Power Level: 0xXX: -127 to +127 dBm
+
+    public const sbyte GAP_ADTYPE_MANUFACTURER_SPECIFIC = -1;
+
+    /**
+     * 闭锁
+     */
+    public const sbyte STATUS_PARK_LOCK = 0;
+
+    /**
+     * 开锁无车
+     */
+    public const sbyte STATUS_PARK_UNLOCK_NO_CAR = 1;
+
+    /**
+     * 状态未知
+     */
+    public const sbyte STATUS_PARK_UNKNOWN = 2;
+
+    /**
+     * 开锁有车
+     */
+    public const sbyte STATUS_PARK_UNLOCK_HAS_CAR = 3;
 
     protected BluetoothDevice Device;
-    protected readonly byte[] ManufacturerData;
 
-    public TTDevice(byte[] manufacturerData, BluetoothDevice device)
+    // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
+    protected readonly sbyte[] ScanRecord;
+
+    public TTDevice(BluetoothDevice device)
     {
-        ManufacturerData = manufacturerData;
+        ScanRecord = new sbyte[device.RawData.Length];
+        for (var i = 0; i < device.RawData.Length; i++) ScanRecord[i] = (sbyte) device.RawData[i];
         Device = device;
         Initialize();
     }
 
+    /**
+     *
+Signed Byte
+[2, 1, 6, 2, 10, -65, 3, 2, 16, 25, 18, -1, 5, 3, 2, 28, 100, -80, 0, -12, -7, 83, 101, -3, -82, 76, -83, -63, -14, 11, 9, 68, 48, 49, 95, 102, 100, 97, 101, 52, 99, 5, 18, 20, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
+1st Set:
+
+02: Length: 2 Bytes
+01: Type: Flags
+06: Flag - 02 && 04: LE General Discoverable && BR/EDR Not Supported
+2nd Set:
+
+10: Length: 16 bytes
+FF: Type: Manufacture Data
+107803E80000000000006400232900: Data specific to the manufacturer
+3rd Set:
+
+09: Length: 9 bytes
+09: Type: Complete Local Name
+4536372045414145: E67 EAAE (Name of device in ASCII)
+     */
     public void Initialize()
     {
-        var manufacturerData = ManufacturerData;
-           // must at least 15 bytes in length
-        if (manufacturerData.Length < 15)
+        var scanRecord = ScanRecord;
+        var scanRecordLength = scanRecord.Length;
+        var index = 0;
+        var nameIsScienerDfu = false;
+        var isHasMAC = false;
+
+        while (index < scanRecordLength)
         {
-            throw new ArgumentException("Manufacturer data must be at least 15 bytes in length");
-        }
-        int offset = 0;
-        this.ProtocolType = (sbyte) manufacturerData[offset++];
-        this.ProtocolVersion = (sbyte) manufacturerData[offset++];
-        if (this.ProtocolType == 18 && this.ProtocolVersion == 25)
-        {
-            this.IsDfuMode = true;
-            return;
-        }
-        if (this.ProtocolType == -1 && this.ProtocolVersion == -1)
-        {
-            this.IsDfuMode = true;
-            return;
-        }
-        if (this.ProtocolType == 52 && this.ProtocolVersion == 18)
-        {
-            this.IsWristband = true;
-        }
-        if (this.ProtocolType == 5 && this.ProtocolVersion == 3)
-        {
-            this.Scene = manufacturerData[offset++];
-        }
-        else
-        {
-            offset = 4;
-            this.ProtocolType = (sbyte) manufacturerData[offset++];
-            this.ProtocolVersion = (sbyte) manufacturerData[offset++];
-            offset = 7;
-            this.Scene = manufacturerData[offset++];
-        }
-        if (this.ProtocolType < 5 || LockVersion.GetLockType(this) == LockType.LOCK_TYPE_V2S)
-        {
-            this.IsRoomLock = true;
-        }
-        if (this.Scene <= 3)
-        {
-            this.IsRoomLock = true;
-        }
-        else
-        {
-            switch (this.Scene)
+            int len = scanRecord[index];
+            if (len == 0) break;
+            var adtype = scanRecord[index + 1];
+            switch (adtype)
             {
-                case 4:
-                    this.IsGlassLock = true;
+                case GAP_ADTYPE_LOCAL_NAME_COMPLETE:
+                    var nameBytes = new byte[len - 1];
+                    Array.Copy(scanRecord, index + 2, nameBytes, 0, len - 1);
+                    var name = System.Text.Encoding.UTF8.GetString(nameBytes);
+                    if (string.IsNullOrEmpty(Name)) Name = name;
+
+                    if (name.Equals("ScienerDfu")) nameIsScienerDfu = true;
+
+                    if (Name.ToUpper().StartsWith("LOCK_")) IsRoomLock = true;
                     break;
-                case 5:
-                case 11:
-                    this.IsSafeLock = true;
-                    break;
-                case 6:
-                    this.IsBicycleLock = true;
-                    break;
-                case 7:
-                    this.IsLockCar = true;
-                    break;
-                case 8:
-                    this.IsPadlock = true;
-                    break;
-                case 9:
-                    this.IsCylinder = true;
-                    break;
-                case 10:
-                    if (this.ProtocolType == 5 && this.ProtocolVersion == 3)
+                case GAP_ADTYPE_MANUFACTURER_SPECIFIC:
+                    GatewayType = GatewayTypeMethods.GetGatewayType(scanRecord.Skip(index + 2).Take(2).ToArray());
+
+                    isHasMAC = true;
+                    var offset = 2;
+                    ProtocolType = scanRecord[index + offset++];
+                    ProtocolVersion = scanRecord[index + offset++];
+
+                    if (ProtocolType == 0x12 && ProtocolVersion == 0x19) // Plug in DFU mode
                     {
-                        this.IsRemoteControlDevice = true;
+                        IsDfuMode = true;
+                        return;
                     }
+
+                    if (ProtocolType == 0x13 && ProtocolVersion == 0x19) // Gateway DFU mode (Telink chip)
+                    {
+                        IsTelinkGatewayDfuMode = true;
+                        return;
+                    }
+
+                    if (ProtocolType == 0xff && ProtocolVersion == 0xff)
+                    {
+                        IsDfuMode = true;
+                        return;
+                    }
+
+                    if (ProtocolType == 0x34 && ProtocolVersion == 0x12) IsWristband = true;
+                    //if (BluetoothImpl.ScanBongOnly) // Wristband only return;
+                    if (ProtocolType == 0x05 && ProtocolVersion == 0x03) // Third generation lock
+                    {
+                        Scene = scanRecord[index + offset++];
+                    }
+                    else // Other locks
+                    {
+                        offset = 6; // Other protocols start from the 6th byte
+                        ProtocolType = scanRecord[index + offset++];
+                        ProtocolVersion = scanRecord[index + offset];
+                        offset = 9; // Scene offset
+                        Scene = scanRecord[index + offset++];
+                    }
+
+                    if (ProtocolType < 0x05 ||
+                        GetLockType() == LockType.LOCK_TYPE_V2S) // Old locks without broadcast
+                    {
+                        IsRoomLock = true;
+                        return;
+                    }
+
+                    if (Scene <= 3)
+                        IsRoomLock = true;
+                    else
+                        ProcessScene();
+
+                    IsUnlock = (scanRecord[index + offset] & 0x01) == 1;
+                    IsSettingMode = (scanRecord[index + offset] & 0x04) != 0;
+                    if (GetLockType() == LockType.LOCK_TYPE_V3 || GetLockType() == LockType.LOCK_TYPE_V3_CAR)
+                    {
+                        IsTouch = (scanRecord[index + offset] & 0x08) != 0; // Third generation lock touch flag
+                    }
+                    else if (GetLockType() == LockType.LOCK_TYPE_CAR) // Second generation parking lock
+                    {
+                        IsTouch = false; // Default to false for parking locks
+                        IsLockCar = true;
+                    }
+
+                    if (IsLockCar) // Combined status of bits 0 and 4
+                    {
+                        if (IsUnlock)
+                        {
+                            if ((scanRecord[index + offset] & 0x10) == 1)
+                                ParkStatus = STATUS_PARK_UNLOCK_HAS_CAR;
+                            else
+                                ParkStatus = STATUS_PARK_UNKNOWN;
+                        }
+                        else
+                        {
+                            if ((scanRecord[index + offset] & 0x10) == 1)
+                                ParkStatus = STATUS_PARK_UNLOCK_NO_CAR;
+                            else
+                                ParkStatus = STATUS_PARK_LOCK;
+                        }
+                    }
+
+                    // Battery capacity offset
+                    offset++;
+                    BatteryCapacity = scanRecord[index + offset];
+                    // MAC address offset
+                    offset += 3;
+                    if (string.IsNullOrEmpty(Address))
+                    {
+                        var macAddressBytes = scanRecord.Skip(index + offset).Take(6).ToArray();
+                        // convert to bytes
+                        var macAddress = new byte[6];
+                        for (var i = 0; i < 6; i++) macAddress[i] = (byte) macAddressBytes[i];
+                        Address = BitConverter.ToString(macAddress).Replace("-", ":");
+                    }
+
+                    break;
+                case GAP_ADTYPE_POWER_LEVEL:
+                    TxPowerLevel = scanRecord[index + 2];
+                    break;
+                default:
                     break;
             }
+
+            index += len + 1;
         }
 
-        byte paramsData = (byte)manufacturerData[offset];
-
-        this.IsUnlock = ((paramsData & 0x1) == 0x1);
-
-        this.HasEvents = ((paramsData & 0x2) == 0x2);
-
-        this.IsSettingMode = ((paramsData & 0x4) != 0x0);
-        if (LockVersion.GetLockType(this) == LockType.LOCK_TYPE_V3 || LockVersion.GetLockType(this) == LockType.LOCK_TYPE_V3_CAR)
-        {
-            this.IsTouch = ((paramsData & 0x8) != 0x0);
-        }
-        else if (LockVersion.GetLockType(this) == LockType.LOCK_TYPE_CAR)
-        {
-            this.IsTouch = false;
-            this.IsLockCar = true;
-        }
-        if (this.IsLockCar)
-        {
-            if (this.IsUnlock)
-            {
-                if ((paramsData & 0x10) == 0x10)
-                {
-                    this.ParkStatus = 3;
-                }
-                else
-                {
-                    this.ParkStatus = 2;
-                }
-            }
-            else if ((paramsData & 0x10) == 0x10)
-            {
-                this.ParkStatus = 1;
-            }
-            else
-            {
-                this.ParkStatus = 0;
-            }
-        }
-        offset++;
-
-        this.BatteryCapacity = manufacturerData[offset];
-
-        // offset += 3 + 4; // Offset in original SDK is + 3, but in scans it's actually +4
-        offset = manufacturerData.Length - 6; // let's just get the last 6 bytes
-        byte[] macBuf = new byte[6];
-        Array.Copy(manufacturerData, offset, macBuf, 0, 6);
-        Array.Reverse(macBuf);
-        this.Address = BitConverter.ToString(macBuf).Replace("-", ":").ToUpper();
+        if (nameIsScienerDfu && !isHasMAC) IsDfuMode = true;
     }
 
-public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
+    private void ProcessScene()
+    {
+        switch (Scene)
+        {
+            case Entity.Scene.GLASS_LOCK: //门禁
+                IsGlassLock = true;
+                break;
+            case Entity.Scene.SAFE_LOCK: //保险箱锁
+            case Entity.Scene.SAFE_LOCK_SINGLE_PASSCODE:
+                IsSafeLock = true;
+                break;
+            case Entity.Scene.BICYCLE_LOCK: //自行车锁
+                IsBicycleLock = true;
+                break;
+            case Entity.Scene.PARKING_LOCK: //车位锁
+                IsLockCar = true;
+                break;
+            case Entity.Scene.PAD_LOCK: //挂锁
+                IsPadlock = true;
+                break;
+            case Entity.Scene.CYLINDER: //锁芯
+                IsCylinder = true;
+                break;
+            case Entity.Scene.REMOTE_CONTROL_DEVICE:
+                if (ProtocolType == 0x05 && ProtocolVersion == 0x03) //二代车位锁场景也是10 增加一个三代锁的判断
+                    IsRemoteControlDevice = true;
+                break;
+            case Entity.Scene.LIFT:
+                IsLift = true;
+                break;
+            case Entity.Scene.POWER_SAVER:
+                IsPowerSaver = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+
+    public bool IsTelinkGatewayDfuMode { get; set; }
+
+    public GatewayType GatewayType { get; set; }
+
+    public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
     {
         try
         {
-            return new TTDevice(device.ManufacturerData, device);
+            return new TTDevice(device);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when(
+            ex is ArgumentException ||
+            ex is IndexOutOfRangeException
+            )
         {
             return null;
         }
     }
 
     protected byte[] IncomingData = [];
-    public static readonly byte[] CRLF = new byte[] { 0x0D, 0x0A };
+
+    public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
+
+    //TODO: Second generation
+    ////Connecting directly based on mac address does not have scanning information. The data here is inaccurate
+    public LockType GetLockType()
+    {
+        if (ProtocolType == 0x05 && ProtocolVersion == 0x03 && Scene == 0x07)
+            LockType = LockType.LOCK_TYPE_V3_CAR;
+        else if (ProtocolType == 0x0a && ProtocolVersion == 0x01)
+            LockType = LockType.LOCK_TYPE_CAR;
+        else if (ProtocolType == 0x0b && ProtocolVersion == 0x01)
+            LockType = LockType.LOCK_TYPE_MOBI;
+        else if (ProtocolType == 0x05 && ProtocolVersion == 0x04)
+            LockType = LockType.LOCK_TYPE_V2S_PLUS;
+        else if (ProtocolType == 0x05 && ProtocolVersion == 0x03)
+            LockType = LockType.LOCK_TYPE_V3;
+        else if ((ProtocolType == 0x05 && ProtocolVersion == 0x01) ||
+                 (Name != null && Name.ToUpper().StartsWith("LOCK_"))) LockType = LockType.LOCK_TYPE_V2S;
+        return LockType;
+    }
 
     protected void OnIncomingData(byte[] data)
     {
@@ -217,12 +339,10 @@ public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
     }
 
     protected bool IsConnected = false;
+
     public async Task Connect()
     {
-        if (IsConnected)
-        {
-            return;
-        }
+        if (IsConnected) return;
         await ReadBasicInfo();
 
         await Device.SubscribeCharacteristic("1910", "FFF4", OnIncomingData);
@@ -233,13 +353,13 @@ public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
     {
         if (await Device.HasService("1800"))
         {
-            byte[] data = await Device.ReadCharacteristic("1800", "2A00");
+            var data = await Device.ReadCharacteristic("1800", "2A00");
             Name = System.Text.Encoding.UTF8.GetString(data);
         }
 
         if (await Device.HasService("180A"))
         {
-            byte[] data = await Device.ReadCharacteristic("180A", "2A24");
+            var data = await Device.ReadCharacteristic("180A", "2A24");
             Model = System.Text.Encoding.UTF8.GetString(data);
             data = await Device.ReadCharacteristic("180A", "2A26");
             Firmware = System.Text.Encoding.UTF8.GetString(data);
@@ -258,6 +378,5 @@ public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
     public void Dispose()
     {
         Device.Dispose();
-
     }
 }

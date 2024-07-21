@@ -15,17 +15,20 @@ public class LinuxBluetoothDevice : BluetoothDevice
     public static async Task<LinuxBluetoothDevice> FromDevice(Device device)
     {
         LinuxBluetoothDevice ble = new LinuxBluetoothDevice();
+
         var manufacturerData = new byte[0];
         try
         {
             var properties = await device.GetAllAsync();
+
+
             manufacturerData = properties.ManufacturerData.FirstOrDefault().Value as byte[];
         }
         catch
         {
 
         }
-        ble.ManufacturerData = manufacturerData ?? new byte[0];
+        ble.RawData = manufacturerData ?? new byte[0];
         ble.Device = device;
         return ble;
     }
