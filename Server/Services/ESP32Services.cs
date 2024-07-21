@@ -22,9 +22,10 @@ public class ESP32Services : IHostedService
         while (!cancellationToken.IsCancellationRequested)
         {
             var client = await listener.AcceptTcpClientAsync(cancellationToken);
+            logger.LogInformation("Client connected: {ClientRemoteEndPoint}", client.Client.RemoteEndPoint);
             var device = new Esp32Device(client);
             await device.Initialize();
-            logger.LogInformation("Device connected: {Device} {ClientRemoteEndPoint}", device, client.Client.RemoteEndPoint);
+            logger.LogInformation("Device connected: {Device}", device, client.Client.RemoteEndPoint);
             devices.Add(device);
         }
     }
@@ -61,8 +62,8 @@ public class ESP32Services : IHostedService
             {
                 try
                 {
-                    var response = await device.GetUuid();
-                    await Task.Delay(250, cancellationToken);
+                    var response = await device.GetBluetoothScan();
+                    await Task.Delay(100, cancellationToken);
                 }catch(Exception ex)
                 {
                     logger.LogError(ex, "Error processing device {Device}", device);
