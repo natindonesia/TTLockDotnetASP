@@ -5,7 +5,7 @@ using Shared.Exceptions;
 
 namespace Console;
 
-public class LinuxBluetoothDevice : BluetoothDevice
+public class LinuxBluetoothDevice : IBluetoothDevice
 {
 
     protected Device Device;
@@ -48,7 +48,9 @@ public class LinuxBluetoothDevice : BluetoothDevice
         }
     }
 
-    public override async Task<bool> HasService(string serviceUuid)
+    public byte[] RawData { get; set; }
+
+    public  async Task<bool> HasService(string serviceUuid)
     {
         await Connect();
         var services = await Device.GetServicesAsync();
@@ -63,7 +65,7 @@ public class LinuxBluetoothDevice : BluetoothDevice
         return false;
     }
 
-    public override async Task<bool> HasCharacteristic(string serviceUuid, string characteristicUuid)
+    public  async Task<bool> HasCharacteristic(string serviceUuid, string characteristicUuid)
     {
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
@@ -84,7 +86,7 @@ public class LinuxBluetoothDevice : BluetoothDevice
         return false;
     }
 
-    public override async Task<byte[]> ReadCharacteristic(string serviceUuid, string characteristicUuid)
+    public  async Task<byte[]> ReadCharacteristic(string serviceUuid, string characteristicUuid)
     {
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
@@ -102,7 +104,7 @@ public class LinuxBluetoothDevice : BluetoothDevice
         return await characteristic.ReadValueAsync(new Dictionary<string, object>());
     }
 
-    public override async Task WriteCharacteristic(string serviceUuid, string characteristicUuid, byte[] data)
+    public  async Task WriteCharacteristic(string serviceUuid, string characteristicUuid, byte[] data)
     {
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
@@ -121,7 +123,7 @@ public class LinuxBluetoothDevice : BluetoothDevice
 
     }
 
-    public override async Task SubscribeCharacteristic(string serviceUuid, string characteristicUuid, Action<byte[]> onData)
+    public  async Task SubscribeCharacteristic(string serviceUuid, string characteristicUuid, Action<byte[]> onData)
     {
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
@@ -145,7 +147,7 @@ public class LinuxBluetoothDevice : BluetoothDevice
         await characteristic.StartNotifyAsync();
     }
 
-    public override void Dispose()
+    public  void Dispose()
     {
         Device.Dispose();
 

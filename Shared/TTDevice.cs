@@ -69,12 +69,12 @@ public class TTDevice : IDisposable
      */
     public const sbyte STATUS_PARK_UNLOCK_HAS_CAR = 3;
 
-    protected BluetoothDevice Device;
+    protected IBluetoothDevice Device;
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
 
-    public TTDevice(BluetoothDevice device)
+    public TTDevice(IBluetoothDevice device)
     {
         ScanRecord = new sbyte[device.RawData.Length];
         for (var i = 0; i < device.RawData.Length; i++) ScanRecord[i] = (sbyte) device.RawData[i];
@@ -283,7 +283,7 @@ FF: Type: Manufacture Data
 
     public GatewayType GatewayType { get; set; }
 
-    public static TTDevice? FromBluetoothDevice(BluetoothDevice device)
+    public static TTDevice? FromBluetoothDevice(IBluetoothDevice device)
     {
         try
         {

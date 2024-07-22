@@ -1,6 +1,6 @@
 namespace Shared;
 
-public abstract class BluetoothDevice : IDisposable
+public interface IBluetoothDevice : IDisposable
 {
     public byte[] RawData { get; set; } // Advertisement data
 

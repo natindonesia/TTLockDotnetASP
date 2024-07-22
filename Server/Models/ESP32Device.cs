@@ -129,7 +129,7 @@ public class Esp32Device
         return $"UUID: {Uuid}";
     }
 
-    public partial class BluetoothDevice
+    public class BluetoothDevice
     {
         [JsonProperty("address")]
         public string Address { get; set; }
@@ -154,6 +154,9 @@ public class Esp32Device
 
         [JsonProperty("service_uuids")]
         public string[] ServiceUuids { get; set; }
+
+        [JsonProperty("raw_data")]
+        public byte[] RawData { get; set; }
     }
 
     public partial class ServiceDatum
