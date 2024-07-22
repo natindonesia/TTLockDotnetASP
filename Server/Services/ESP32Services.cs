@@ -23,10 +23,18 @@ public class ESP32Services : IHostedService
         {
             var client = await listener.AcceptTcpClientAsync(cancellationToken);
             logger.LogInformation("Client connected: {ClientRemoteEndPoint}", client.Client.RemoteEndPoint);
-            var device = new Esp32Device(client);
-            await device.Initialize();
-            logger.LogInformation("Device connected: {Device}", device, client.Client.RemoteEndPoint);
-            devices.Add(device);
+            try
+            {
+                var device = new Esp32Device(client);
+                await device.Initialize();
+                logger.LogInformation("Device connected: {Device}", device, client.Client.RemoteEndPoint);
+                devices.Add(device);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error connecting device");
+                client.Close();
+            }
         }
     }
 
@@ -62,8 +70,11 @@ public class ESP32Services : IHostedService
             {
                 try
                 {
-                    var response = await device.GetBluetoothScan();
-                    await Task.Delay(100, cancellationToken);
+                    var response = await device.GetInfo();
+                    logger.LogInformation("Device {Device} info: {Response}", device, response);
+                    var bluetoothScan = await device.GetBluetoothScan();
+
+                    await Task.Delay(10000, cancellationToken);
                 }catch(Exception ex)
                 {
                     logger.LogError(ex, "Error processing device {Device}", device);

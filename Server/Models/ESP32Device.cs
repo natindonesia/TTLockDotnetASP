@@ -13,7 +13,9 @@ public class Esp32Device
     public TcpClient Client { get; set; }
     public StreamReader? Reader { get; set; }
     protected Task? ReadingTask { get; set; }
-    protected ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>> ResponseTasks { get; set; } = new ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>>();
+
+    protected ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>> ResponseTasks { get; set; } =
+        new ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>>();
 
     public Esp32Device(TcpClient client)
     {
@@ -28,14 +30,19 @@ public class Esp32Device
         Uuid = await GetUuid();
     }
 
+    protected async Task OnEvent(Event @event)
+    {
+        //System.Console.WriteLine(@event.Name);
+    }
 
     protected async Task ResponseLoop()
     {
         var stream = Client.GetStream();
-        if(Reader == null)
+        if (Reader == null)
         {
             Reader = new StreamReader(stream, Encoding.UTF8, false, 8096, true);
         }
+
         var reader = Reader;
         while (Client.Connected)
         {
@@ -52,13 +59,25 @@ public class Esp32Device
             }
             catch (JsonReaderException)
             {
-                continue;
+               continue;
             }
-
+            // not this?;
+            if(response == null || (response.Result == null && response.Error == null && response.Id == 0)){
+                try
+                {
+                    var eventObject = JsonConvert.DeserializeObject<Event>(responseJson);
+                    if (eventObject != null) await Task.Run(() => OnEvent(eventObject));
+                }
+                catch (JsonReaderException)
+                {
+                    continue;
+                }
+            }
             if (response == null)
             {
                 continue;
             }
+
             if (ResponseTasks.TryGetValue(response.Id, out var taskCompletionSource))
             {
                 taskCompletionSource.SetResult(response);
@@ -73,27 +92,31 @@ public class Esp32Device
         {
             throw new InvalidOperationException("Device not initialized");
         }
-        if(ReadingTask.Exception != null)
+
+        if (ReadingTask.Exception != null)
         {
             throw ReadingTask.Exception;
         }
+
         if (ReadingTask.Status != TaskStatus.Running && ReadingTask.Status != TaskStatus.WaitingForActivation)
         {
             throw new InvalidOperationException("Device not initialized: " + ReadingTask.Status);
         }
+
         if (ReadingTask.IsFaulted)
         {
             throw ReadingTask.Exception ?? throw new InvalidOperationException("Device not initialized");
         }
     }
 
-    
-    public async Task<RpcResponse> SendRpcRequest(string method, Dictionary<string, object>? parameters = null, CancellationToken cancellationToken = default)
+
+    public async Task<RpcResponse> SendRpcRequest(string method, Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default)
     {
         parameters ??= new Dictionary<string, object>();
         var request = new RpcRequest
         {
-            Id = (ulong)DateTime.Now.Ticks,
+            Id = (ulong) DateTime.Now.Ticks,
             Method = method,
             Params = parameters
         };
@@ -110,23 +133,63 @@ public class Esp32Device
         return response;
     }
 
+    // this one have watchdog
+    public async Task<RpcResponse> SendRpcRequestSafe(string method, Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default){
+        var response = SendRpcRequest(method, parameters, cancellationToken);
+        var timeout = Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        var task = await Task.WhenAny(response, timeout);
+        if (task == timeout)
+        {
+            throw new TimeoutException();
+        }else if (task == response)
+        {
+            return await response;
+        }
+
+        throw new InvalidOperationException();
+    }
+
+
     public async Task<string> GetUuid()
     {
-        var response = await SendRpcRequest("get_uuid");
+        var response = await SendRpcRequestSafe("get_uuid");
         return response.Result?.ToString() ?? throw new InvalidOperationException();
     }
 
 
 
-    public async Task<JArray> GetBluetoothScan()
+    public async Task<object> GetBluetoothScan()
     {
-        var response = await SendRpcRequest("bluetooth_start_scan");
-        return (JArray)response.Result! ?? throw new InvalidOperationException();
+        var response = await SendRpcRequestSafe("bluetooth_start_scan");
+        return response.Result! ?? throw new InvalidOperationException();
+    }
+
+    public async Task<JObject> GetInfo()
+    {
+        var response = await SendRpcRequestSafe("get_info");
+        return (JObject)response.Result! ?? throw new InvalidOperationException();
     }
 
     public override string ToString()
     {
         return $"UUID: {Uuid}";
+    }
+
+
+    public class Event
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("data")]
+        public object Data { get; set; }
+
+        public override string ToString()
+        {
+            return $"{Name}: {Data}";
+
+        }
     }
 
     public class BluetoothDevice
