@@ -3,6 +3,11 @@ using System.Net.Sockets;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Server.Net;
+using Server.Net.Packets;
+using Server.Services;
+using Shared;
+using Shared.Enums;
 
 namespace Server.Models;
 
@@ -11,103 +16,29 @@ public class Esp32Device
 
     public string? Uuid { get; set; }
     public TcpClient Client { get; set; }
-    public StreamReader? Reader { get; set; }
-    protected Task? ReadingTask { get; set; }
 
-    protected ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>> ResponseTasks { get; set; } =
-        new ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>>();
 
-    public Esp32Device(TcpClient client)
+    protected readonly Esp32ServerService ESP32ServerService;
+
+
+    public Esp32Device(TcpClient client, Esp32ServerService serverService)
     {
-
         Client = client;
+        ESP32ServerService = serverService;
     }
 
     public async Task Initialize()
     {
-        ReadingTask = Task.Run(ResponseLoop);
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
         Uuid = await GetUuid();
+
     }
 
-    protected async Task OnEvent(Event @event)
+    public async Task OnEvent(Event @event)
     {
-        //System.Console.WriteLine(@event.Name);
+
     }
 
-    protected async Task ResponseLoop()
-    {
-        var stream = Client.GetStream();
-        if (Reader == null)
-        {
-            Reader = new StreamReader(stream, Encoding.UTF8, false, 8096, true);
-        }
 
-        var reader = Reader;
-        while (Client.Connected)
-        {
-            var responseJson = await reader.ReadLineAsync();
-            if (responseJson == null)
-            {
-                break;
-            }
-
-            RpcResponse? response = null;
-            try
-            {
-                response = JsonConvert.DeserializeObject<RpcResponse>(responseJson);
-            }
-            catch (JsonReaderException)
-            {
-               continue;
-            }
-            // not this?;
-            if(response == null || (response.Result == null && response.Error == null && response.Id == 0)){
-                try
-                {
-                    var eventObject = JsonConvert.DeserializeObject<Event>(responseJson);
-                    if (eventObject != null) await Task.Run(() => OnEvent(eventObject));
-                }
-                catch (JsonReaderException)
-                {
-                    continue;
-                }
-            }
-            if (response == null)
-            {
-                continue;
-            }
-
-            if (ResponseTasks.TryGetValue(response.Id, out var taskCompletionSource))
-            {
-                taskCompletionSource.SetResult(response);
-            }
-
-        }
-    }
-
-    protected void CheckReadingTask()
-    {
-        if (ReadingTask == null)
-        {
-            throw new InvalidOperationException("Device not initialized");
-        }
-
-        if (ReadingTask.Exception != null)
-        {
-            throw ReadingTask.Exception;
-        }
-
-        if (ReadingTask.Status != TaskStatus.Running && ReadingTask.Status != TaskStatus.WaitingForActivation)
-        {
-            throw new InvalidOperationException("Device not initialized: " + ReadingTask.Status);
-        }
-
-        if (ReadingTask.IsFaulted)
-        {
-            throw ReadingTask.Exception ?? throw new InvalidOperationException("Device not initialized");
-        }
-    }
 
 
     public async Task<RpcResponse> SendRpcRequest(string method, Dictionary<string, object>? parameters = null,
@@ -124,13 +55,8 @@ public class Esp32Device
         var requestJson = JsonConvert.SerializeObject(request);
         var requestBytes = Encoding.UTF8.GetBytes(requestJson + "\n");
         var stream = Client.GetStream();
-        var taskCompletionSource = new TaskCompletionSource<RpcResponse>();
-        ResponseTasks.TryAdd(request.Id, taskCompletionSource);
         await stream.WriteAsync(requestBytes, cancellationToken);
-        CheckReadingTask();
-        var response = await taskCompletionSource.Task;
-        ResponseTasks.TryRemove(request.Id, out _);
-        return response;
+        return await ESP32ServerService.WaitForResponse(request.Id, TimeSpan.FromSeconds(30), cancellationToken);
     }
 
     // this one have watchdog
@@ -176,21 +102,6 @@ public class Esp32Device
         return $"UUID: {Uuid}";
     }
 
-
-    public class Event
-    {
-        [JsonProperty("name")]
-        public string Name { get; set; }
-
-        [JsonProperty("data")]
-        public object Data { get; set; }
-
-        public override string ToString()
-        {
-            return $"{Name}: {Data}";
-
-        }
-    }
 
     public class BluetoothDevice
     {
@@ -239,27 +150,5 @@ public class Esp32Device
         return false;
     }
 
-    public class RpcRequest
-    {
-        [JsonProperty("id")]
-        public ulong Id { get; set; }
 
-        [JsonProperty("method")]
-        public string Method { get; set; }
-
-        [JsonProperty("params")]
-        public Dictionary<string, object> Params { get; set; }
-    }
-
-    public class RpcResponse
-    {
-        [JsonProperty("id")]
-        public ulong Id { get; set; }
-
-        [JsonProperty("result")]
-        public object? Result { get; set; }
-
-        [JsonProperty("error")]
-        public string? Error { get; set; }
-    }
 }
