@@ -18,6 +18,7 @@ public class Esp32Device
     public TcpClient Client { get; set; }
 
 
+    protected bool IsScanning = false;
     protected readonly Esp32ServerService ESP32ServerService;
 
 
@@ -87,8 +88,16 @@ public class Esp32Device
 
     public async Task<object> GetBluetoothScan()
     {
-        var response = await SendRpcRequestSafe("bluetooth_start_scan");
-        return response.Result! ?? throw new InvalidOperationException();
+        if(IsScanning) throw new InvalidOperationException("Already scanning");
+        IsScanning = true;
+        try
+        {
+            var response = await SendRpcRequestSafe("bluetooth_start_scan");
+            return response.Result! ?? throw new InvalidOperationException();
+        }finally
+        {
+            IsScanning = false;
+        }
     }
 
     public async Task<JObject> GetInfo()
