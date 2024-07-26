@@ -1,10 +1,15 @@
+using Newtonsoft.Json;
 using Shared;
 
 namespace Server.Models;
 
 public class ESPBluetoothDevice : Esp32Device.BluetoothDevice, IBluetoothDevice
 {
+    [JsonIgnore]
     public Esp32Device Device;
+
+
+
 
     public async Task<bool> HasService(string serviceUuid)
     {

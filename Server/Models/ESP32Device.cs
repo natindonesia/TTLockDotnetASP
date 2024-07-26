@@ -19,7 +19,9 @@ public class Esp32Device
 
 
     protected bool IsScanning = false;
+    protected bool IsBusy = false;
     protected readonly Esp32ServerService ESP32ServerService;
+    protected List<ESPBluetoothDevice> BluetoothDevices = new();
 
 
     public Esp32Device(TcpClient client, Esp32ServerService serverService)
@@ -34,7 +36,7 @@ public class Esp32Device
 
     }
 
-    public async Task OnEvent(Event @event)
+    public void OnEvent(Event @event)
     {
 
     }
@@ -45,6 +47,7 @@ public class Esp32Device
     public async Task<RpcResponse> SendRpcRequest(string method, Dictionary<string, object>? parameters = null,
         CancellationToken cancellationToken = default)
     {
+
         parameters ??= new Dictionary<string, object>();
         var request = new RpcRequest
         {

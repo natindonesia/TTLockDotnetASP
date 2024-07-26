@@ -26,10 +26,7 @@ public class Esp32ServerService : IHostedService
         this.Logger = logger;
         this.EventReceived += (_, @event) =>
         {
-            foreach (var device in Devices)
-            {
-                Task.Run(() => device.OnEvent(@event));
-            }
+            @event.Device.OnEvent(@event); //wtf?
         };
         this.TcpListenerService.ClientConnected +=  (_, client) =>
         {
