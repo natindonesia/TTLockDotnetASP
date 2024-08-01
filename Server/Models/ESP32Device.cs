@@ -38,7 +38,7 @@ public class Esp32Device
 
     public void OnEvent(Event @event)
     {
-
+        
     }
 
 
@@ -115,35 +115,7 @@ public class Esp32Device
     }
 
 
-    public class BluetoothDevice
-    {
-        [JsonProperty("address")]
-        public string Address { get; set; }
 
-        [JsonProperty("adv_flags")]
-        public string AdvFlags { get; set; }
-
-        [JsonProperty("adv_type")]
-        public string AdvType { get; set; }
-
-        [JsonProperty("manufacture_data")]
-        public long[] ManufactureData { get; set; }
-
-        [JsonProperty("name")]
-        public string Name { get; set; }
-
-        [JsonProperty("rssi")]
-        public long Rssi { get; set; }
-
-        [JsonProperty("service_data")]
-        public ServiceDatum[] ServiceData { get; set; }
-
-        [JsonProperty("service_uuids")]
-        public string[] ServiceUuids { get; set; }
-
-        [JsonProperty("raw_data")]
-        public byte[] RawData { get; set; }
-    }
 
     public partial class ServiceDatum
     {

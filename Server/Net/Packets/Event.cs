@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace Server.Net.Packets;
 
-public class Event : ESP32Response
+public class Event : Esp32Response
 {
 
     [JsonProperty("name")]

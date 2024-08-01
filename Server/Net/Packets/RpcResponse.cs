@@ -1,10 +1,8 @@
 using Newtonsoft.Json;
-using Server.Models;
-using Server.Net.Packets;
 
-namespace Server.Net;
+namespace Server.Net.Packets;
 
-public class RpcResponse : ESP32Response
+public class RpcResponse : Esp32Response
 {
     [JsonProperty("id")]
     public ulong Id { get; set; }

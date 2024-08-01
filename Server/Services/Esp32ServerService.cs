@@ -13,7 +13,7 @@ public class Esp32ServerService : IHostedService
 {
     protected readonly TcpListenerService TcpListenerService;
     protected readonly BlockingCollection<Esp32Device> Devices = new();
-    protected readonly BlockingCollection<ESP32Response> Responses = new();
+    protected readonly BlockingCollection<Esp32Response> Responses = new();
     protected readonly ILogger<Esp32ServerService> Logger;
 
     protected readonly ConcurrentDictionary<ulong, TaskCompletionSource<RpcResponse>> ResponseTasks = new();

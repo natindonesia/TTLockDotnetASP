@@ -2,6 +2,7 @@ namespace Shared;
 
 public interface IBluetoothDevice : IDisposable
 {
+    public string Address { get; set; }
     public byte[] RawData { get; set; } // Advertisement data
 
 
