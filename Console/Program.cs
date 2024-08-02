@@ -1,5 +1,4 @@
-﻿
-using Console;
+﻿using Console;
 using Linux.Bluetooth;
 using Linux.Bluetooth.Extensions;
 using Shared;
@@ -13,7 +12,7 @@ if (adapter == null)
 }
 
 
-adapter.DeviceFound +=  async (sender, eventArgs) =>
+adapter.DeviceFound += async (sender, eventArgs) =>
 {
     var properties = await eventArgs.Device.GetAllAsync();
     System.Console.WriteLine($"Device found: {properties.Name} ({properties.Address})");
@@ -37,29 +36,28 @@ foreach (var device in devices)
     deviceProperties.Add(properties);
     var linuxBluetoothDevice = await LinuxBluetoothDevice.FromDevice(device);
     var ttDevice = TTDevice.FromBluetoothDevice(linuxBluetoothDevice);
-    if( ttDevice != null && ttDevice.LockType != LockType.UNKNOWN) ttDevices.Add(ttDevice);
+    if (ttDevice != null && ttDevice.LockType != LockType.UNKNOWN) ttDevices.Add(ttDevice);
 }
 
-System.Console.WriteLine("Devices found:");
-foreach (var device in ttDevices)
+System.Console.WriteLine("Found " + ttDevices.Count + " TT Devices");
+while (true)
 {
-    while (true)
+    foreach (var device in ttDevices)
     {
         try
         {
             await device.ReadBasicInfo();
-        }catch (Exception ex)
+        }
+        catch (Exception ex)
         {
             System.Console.WriteLine(ex.Message);
             System.Console.WriteLine("Retrying...");
-            await Task.Delay(1000);
+
             continue;
         }
-        break;
+
+        System.Console.WriteLine(device);
     }
 
-    System.Console.WriteLine(device);
+    await Task.Delay(1000);
 }
-
-
-

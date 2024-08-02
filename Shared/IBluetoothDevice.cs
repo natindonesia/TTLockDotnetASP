@@ -14,6 +14,4 @@ public interface IBluetoothDevice : IDisposable
     public abstract Task WriteCharacteristic(string serviceUuid, string characteristicUuid, byte[] data);
 
     public abstract Task SubscribeCharacteristic(string serviceUuid, string characteristicUuid, Action<byte[]> onData);
-
-    public abstract void Dispose();
 }

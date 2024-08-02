@@ -1,49 +1,10 @@
+using Shared.Entity;
 using Shared.Enums;
 
 namespace Shared;
 
 public class TTDevice : IDisposable
 {
-    protected string Id = "";
-    protected string Uuid = "";
-    public string Name = "unknown";
-    protected string Manufacturer = "unknown";
-    protected string Model = "unknown";
-    protected string Hardware = "unknown";
-    protected string Firmware = "unknown";
-    protected string Address = "";
-    protected string Rssi = "0";
-    public sbyte ProtocolType = 0;
-    public sbyte ProtocolVersion = 0;
-    public sbyte Scene = 0;
-    protected byte GroupId = 0;
-    protected byte OrgId = 0;
-    public LockType LockType = LockType.UNKNOWN;
-    protected bool IsTouch = false;
-    protected bool IsUnlock = false;
-    protected bool HasEvents = true;
-    protected bool IsSettingMode = false;
-    protected sbyte TxPowerLevel = 0;
-    protected sbyte BatteryCapacity = 0;
-    protected long Date = 0;
-
-    protected bool IsWristband,
-        IsRoomLock,
-        IsSafeLock,
-        IsBicycleLock,
-        IsLockCar,
-        IsGlassLock,
-        IsPadlock,
-        IsCylinder,
-        IsLift,
-        IsPowerSaver,
-        IsRemoteControlDevice = false;
-
-    protected bool IsDfuMode = false;
-    protected bool IsNoLockService = false;
-    protected int RemoteUnlockSwitch = 0;
-    protected int DisconnectStatus = 0;
-    protected int ParkStatus = 0;
     public const sbyte GAP_ADTYPE_LOCAL_NAME_COMPLETE = 9; //!< Complete local name
     public const sbyte GAP_ADTYPE_POWER_LEVEL = 10; //!< TX Power Level: 0xXX: -127 to +127 dBm
 
@@ -69,10 +30,57 @@ public class TTDevice : IDisposable
      */
     public const sbyte STATUS_PARK_UNLOCK_HAS_CAR = 3;
 
-    protected IBluetoothDevice Device;
+    public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
+    protected string Address = "";
+    protected sbyte BatteryCapacity = 0;
+    protected long Date = 0;
+
+    protected IBluetoothDevice Device;
+    protected int DisconnectStatus = 0;
+    protected string Firmware = "unknown";
+    protected byte GroupId = 0;
+    protected string Hardware = "unknown";
+    protected bool HasEvents = true;
+    protected string Id = "";
+
+    protected byte[] IncomingData = [];
+
+    protected bool IsConnected = false;
+
+    protected bool IsDfuMode = false;
+    protected bool IsNoLockService = false;
+    protected bool IsSettingMode = false;
+    protected bool IsTouch = false;
+    protected bool IsUnlock = false;
+
+    protected bool IsWristband,
+        IsRoomLock,
+        IsSafeLock,
+        IsBicycleLock,
+        IsLockCar,
+        IsGlassLock,
+        IsPadlock,
+        IsCylinder,
+        IsLift,
+        IsPowerSaver,
+        IsRemoteControlDevice = false;
+
+    public LockType LockType = LockType.UNKNOWN;
+    protected string Manufacturer = "unknown";
+    protected string Model = "unknown";
+    public string Name = "unknown";
+    protected byte OrgId = 0;
+    protected int ParkStatus = 0;
+    public sbyte ProtocolType = 0;
+    public sbyte ProtocolVersion = 0;
+    protected int RemoteUnlockSwitch = 0;
+    protected string Rssi = "0";
+    public sbyte Scene = 0;
+    protected sbyte TxPowerLevel = 0;
+    protected string Uuid = "";
 
     public TTDevice(IBluetoothDevice device)
     {
@@ -80,6 +88,16 @@ public class TTDevice : IDisposable
         for (var i = 0; i < device.RawData.Length; i++) ScanRecord[i] = (sbyte) device.RawData[i];
         Device = device;
         Initialize();
+    }
+
+
+    public bool IsTelinkGatewayDfuMode { get; set; }
+
+    public GatewayType GatewayType { get; set; }
+
+    public void Dispose()
+    {
+        Device.Dispose();
     }
 
     /**
@@ -278,29 +296,20 @@ FF: Type: Manufacture Data
         }
     }
 
-
-    public bool IsTelinkGatewayDfuMode { get; set; }
-
-    public GatewayType GatewayType { get; set; }
-
     public static TTDevice? FromBluetoothDevice(IBluetoothDevice device)
     {
         try
         {
             return new TTDevice(device);
         }
-        catch (Exception ex) when(
+        catch (Exception ex) when (
             ex is ArgumentException ||
             ex is IndexOutOfRangeException
-            )
+        )
         {
             return null;
         }
     }
-
-    protected byte[] IncomingData = [];
-
-    public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
 
     //TODO: Second generation
     ////Connecting directly based on mac address does not have scanning information. The data here is inaccurate
@@ -338,8 +347,6 @@ FF: Type: Manufacture Data
         }
     }
 
-    protected bool IsConnected = false;
-
     public async Task Connect()
     {
         if (IsConnected) return;
@@ -373,10 +380,5 @@ FF: Type: Manufacture Data
     public override string ToString()
     {
         return $"TTDevice: {Name} ({Address}) - {LockType}";
-    }
-
-    public void Dispose()
-    {
-        Device.Dispose();
     }
 }
