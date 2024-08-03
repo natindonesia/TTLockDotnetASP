@@ -8,21 +8,32 @@ namespace Console;
 public class LinuxBluetoothDevice : IBluetoothDevice
 {
     public static readonly TimeSpan timeout = TimeSpan.FromSeconds(5);
-    protected bool Connected = false;
+    protected volatile bool Connected = false;
 
     protected Device Device;
+
+    public LinuxBluetoothDevice(Device device)
+    {
+        Device = device;
+        Device.Disconnected += (sender, args) =>
+        {
+            Connected = false;
+            return Task.CompletedTask;
+        };
+    }
+
     public string Address { get; set; } = "";
     public byte[] RawData { get; set; } = new byte[0];
 
-
     public async Task<bool> HasService(string serviceUuid)
     {
+        serviceUuid = serviceUuid.ToLower();
         await Connect();
         var services = await Device.GetServicesAsync();
         foreach (var service in services)
         {
             var uuid = await service.GetUUIDAsync();
-            if (uuid == serviceUuid)
+            if (string.Equals(uuid, serviceUuid, StringComparison.CurrentCultureIgnoreCase))
             {
                 return true;
             }
@@ -33,6 +44,9 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     public async Task<bool> HasCharacteristic(string serviceUuid, string characteristicUuid)
     {
+        serviceUuid = serviceUuid.ToLower();
+        characteristicUuid = characteristicUuid.ToLower();
+
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
         if (service == null)
@@ -44,7 +58,7 @@ public class LinuxBluetoothDevice : IBluetoothDevice
         foreach (var characteristic in characteristics)
         {
             var uuid = await characteristic.GetUUIDAsync();
-            if (uuid == characteristicUuid)
+            if (string.Equals(uuid, characteristicUuid, StringComparison.CurrentCultureIgnoreCase))
             {
                 return true;
             }
@@ -55,6 +69,9 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     public async Task<byte[]> ReadCharacteristic(string serviceUuid, string characteristicUuid)
     {
+        serviceUuid = serviceUuid.ToLower();
+        characteristicUuid = characteristicUuid.ToLower();
+
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
         if (service == null)
@@ -73,6 +90,8 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     public async Task WriteCharacteristic(string serviceUuid, string characteristicUuid, byte[] data)
     {
+        serviceUuid = serviceUuid.ToLower();
+        characteristicUuid = characteristicUuid.ToLower();
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
         if (service == null)
@@ -91,6 +110,8 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     public async Task SubscribeCharacteristic(string serviceUuid, string characteristicUuid, Action<byte[]> onData)
     {
+        serviceUuid = serviceUuid.ToLower();
+        characteristicUuid = characteristicUuid.ToLower();
         await Connect();
         var service = await Device.GetServiceAsync(serviceUuid);
         if (service == null)
@@ -113,6 +134,12 @@ public class LinuxBluetoothDevice : IBluetoothDevice
         await characteristic.StartNotifyAsync();
     }
 
+    public async Task<string?> GetName()
+    {
+        var props = await Device.GetPropertiesAsync();
+        return props.Name;
+    }
+
     public void Dispose()
     {
         Device.Dispose();
@@ -120,7 +147,7 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     public static async Task<LinuxBluetoothDevice> FromDevice(Device device)
     {
-        LinuxBluetoothDevice ble = new LinuxBluetoothDevice();
+        LinuxBluetoothDevice ble = new LinuxBluetoothDevice(device);
         var properties = await device.GetAllAsync();
         ble.Address = properties.Address;
         if (ble.Address == "F2:C1:AD:4C:AE:FD")
@@ -140,7 +167,6 @@ public class LinuxBluetoothDevice : IBluetoothDevice
     {
         if (!Connected)
         {
-            Device.Disconnected += async (sender, args) => { Connected = false; };
             await Device.ConnectAsync();
             await Device.WaitForPropertyValueAsync("Connected", value: true, timeout);
             await Device.WaitForPropertyValueAsync("ServicesResolved", value: true, timeout);

@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Shared.Api.Commands;
 using Shared.Enums;
+using Shared.Exceptions;
 using Shared.Utils;
 
 namespace Shared.Api;
@@ -313,121 +315,122 @@ public class Command
 
     public static readonly byte VERSION_LOCK_V1 = 1;
     private static readonly byte APP_COMMAND = (byte) 0xaa; //app命令
-    static readonly int ENCRY_OLD = 1;
-    static readonly int ENCRY_AES_CBC = 2;
-    public byte checksum; // 校验		1 字节
-    public byte command; // 命令字 	1 字节
-    public byte[] data; // 数据
-    public byte encrypt; // 加密字		1 字节
+    private static readonly int ENCRY_OLD = 1;
+    private static readonly int ENCRY_AES_CBC = 2;
 
-    public byte[] header; // 帧首 		2 字节
-    public byte length; // 长度		1 字节
+    private readonly bool _mIsChecksumValid;
+    public readonly byte[] Organization;
+    public readonly byte ProtocolType; // 预留	 	1 字节 //reserved 修改为protocol_type
+    public readonly byte[] SubOrganization;
 
     /**
      * 锁类型
      */
-    private LockType lockType;
+    private LockType _lockType;
 
-    private bool mIsChecksumValid;
-    public byte[] organization;
-    public byte protocol_type; // 预留	 	1 字节 //reserved 修改为protocol_type
-    private byte scene;
-    public byte[] sub_organization;
+    private byte _scene;
 
     // V4版本新加
-    private byte sub_version;
+    private byte _subVersion;
+    public byte Checksum; // 校验		1 字节
+    public byte CommandType; // 命令字 	1 字节
+    public byte[]? Data; // 数据
+    public byte Encrypt; // 加密字		1 字节
+
+    public byte[] Header; // 帧首 		2 字节
+    public byte Length; // 长度		1 字节
 
     public Command(LockVersion lockVersion)
     {
-        header = new byte[2];
-        header[0] = 0x7F;
-        header[1] = 0x5A;
-        protocol_type = (byte) lockVersion.getProtocolType();
-        sub_version = (byte) lockVersion.getProtocolVersion();
-        scene = (byte) lockVersion.getScene();
-        organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
-        sub_organization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
-        encrypt = APP_COMMAND;
-        generateLockType();
+        Header = new byte[2];
+        Header[0] = 0x7F;
+        Header[1] = 0x5A;
+        ProtocolType = (byte) lockVersion.getProtocolType();
+        _subVersion = (byte) lockVersion.getProtocolVersion();
+        _scene = (byte) lockVersion.getScene();
+        Organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
+        SubOrganization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
+        Encrypt = APP_COMMAND;
+        GenerateLockType();
     }
 
-    public Command(String lockVersionString)
+    public Command(string lockVersionString)
     {
-        LockVersion lockVersion = JsonSerializer.Deserialize<LockVersion>(lockVersionString);
-        header = new byte[2];
-        header[0] = 0x7F;
-        header[1] = 0x5A;
-        protocol_type = (byte) lockVersion.getProtocolType();
-        sub_version = (byte) lockVersion.getProtocolVersion();
-        scene = (byte) lockVersion.getScene();
-        organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
-        sub_organization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
-        encrypt = APP_COMMAND;
-        generateLockType();
+        var lockVersion = JsonSerializer.Deserialize<LockVersion>(lockVersionString);
+        Header = new byte[2];
+        Header[0] = 0x7F;
+        Header[1] = 0x5A;
+        ProtocolType = (byte) lockVersion.getProtocolType();
+        _subVersion = (byte) lockVersion.getProtocolVersion();
+        _scene = (byte) lockVersion.getScene();
+        Organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
+        SubOrganization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
+        Encrypt = APP_COMMAND;
+        GenerateLockType();
     }
 
     public Command(LockType lockType)
     {
-        LockVersion lockVersion = LockVersion.GetLockVersion(lockType);
-        header = new byte[2];
-        header[0] = 0x7F;
-        header[1] = 0x5A;
-        protocol_type = (byte) lockVersion.getProtocolType();
-        sub_version = (byte) lockVersion.getProtocolVersion();
-        scene = (byte) lockVersion.getScene();
-        organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
-        sub_organization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
-        encrypt = APP_COMMAND;
+        var lockVersion = LockVersion.GetLockVersion(lockType);
+        Header = new byte[2];
+        Header[0] = 0x7F;
+        Header[1] = 0x5A;
+        ProtocolType = (byte) lockVersion.getProtocolType();
+        _subVersion = (byte) lockVersion.getProtocolVersion();
+        _scene = (byte) lockVersion.getScene();
+        Organization = DigitUtil.shortToByteArray(lockVersion.getGroupId());
+        SubOrganization = DigitUtil.shortToByteArray(lockVersion.getOrgId());
+        Encrypt = APP_COMMAND;
         if (lockType == LockType.LOCK_TYPE_V2)
         {
-            this.encrypt = DigitUtil.generateRandomByte();
-            data = new byte[0];
+            Encrypt = DigitUtil.generateRandomByte();
+            Data = new byte[0];
         }
 
-        generateLockType();
+        GenerateLockType();
     }
 
-    public Command(byte[] command)
+    public Command(byte[] responseBytes)
     {
-        this.header = new byte[2];
-        this.header[0] = command[0];
-        this.header[1] = command[1];
-        this.protocol_type = command[2];
+        Header = new byte[2];
+        Header[0] = responseBytes[0];
+        Header[1] = responseBytes[1];
+        ProtocolType = responseBytes[2];
         try
         {
-            if (this.protocol_type >= 5) // new protocol
+            if (ProtocolType >= 5) // new protocol
             {
-                organization = new byte[2];
-                sub_organization = new byte[2];
-                this.sub_version = command[3];
-                this.scene = command[4];
-                this.organization[0] = command[5];
-                this.organization[1] = command[6];
-                this.sub_organization[0] = command[7];
-                this.sub_organization[1] = command[8];
-                this.command = command[9];
-                this.encrypt = command[10];
-                this.length = command[11];
-                this.data = new byte[this.length];
-                Array.Copy(command, 12, this.data, 0, this.length);
+                Organization = new byte[2];
+                SubOrganization = new byte[2];
+                _subVersion = responseBytes[3];
+                _scene = responseBytes[4];
+                Organization[0] = responseBytes[5];
+                Organization[1] = responseBytes[6];
+                SubOrganization[0] = responseBytes[7];
+                SubOrganization[1] = responseBytes[8];
+                CommandType = responseBytes[9];
+                Encrypt = responseBytes[10];
+                Length = responseBytes[11];
+                Data = new byte[Length];
+                Array.Copy(responseBytes, 12, Data, 0, Length);
             }
             else
             {
-                this.command = command[3];
-                this.encrypt = command[4];
-                this.length = command[5];
-                this.data = new byte[this.length];
-                Array.Copy(command, 6, this.data, 0, this.length);
+                CommandType = responseBytes[3];
+                Encrypt = responseBytes[4];
+                Length = responseBytes[5];
+                Data = new byte[Length];
+                Array.Copy(responseBytes, 6, Data, 0, Length);
             }
 
-            this.checksum = command[command.Length - 1];
-            byte[] commandWithoutChecksum = new byte[command.Length - 1];
-            Array.Copy(command, 0, commandWithoutChecksum, 0, commandWithoutChecksum.Length);
-            byte checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
-            mIsChecksumValid = (checksum == this.checksum);
-            Console.WriteLine("checksum=" + checksum + " this.checksum=" + this.checksum);
-            Console.WriteLine("mIsChecksumValid : " + mIsChecksumValid);
-            generateLockType();
+            this.Checksum = responseBytes[responseBytes.Length - 1];
+            var commandWithoutChecksum = new byte[responseBytes.Length - 1];
+            Array.Copy(responseBytes, 0, commandWithoutChecksum, 0, commandWithoutChecksum.Length);
+            var checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
+            _mIsChecksumValid = checksum == this.Checksum;
+            Console.WriteLine("checksum=" + checksum + " this.checksum=" + this.Checksum);
+            Console.WriteLine("mIsChecksumValid : " + _mIsChecksumValid);
+            GenerateLockType();
         }
         catch (Exception e)
         {
@@ -437,41 +440,41 @@ public class Command
 
     public void setCommand(byte command)
     {
-        this.command = command;
+        this.CommandType = command;
     }
 
     public byte getCommand()
     {
-        return command;
+        return CommandType;
     }
 
     public byte getScene()
     {
-        return scene;
+        return _scene;
     }
 
     public void setScene(byte scene)
     {
-        this.scene = scene;
+        this._scene = scene;
     }
 
     public void setData(byte[] data)
     {
-        this.data = CodecUtils.EncodeWithEncrypt(data, this.encrypt);
-        this.length = (byte) this.data.Length;
+        this.Data = CodecUtils.EncodeWithEncrypt(data, Encrypt);
+        Length = (byte) this.Data.Length;
     }
 
     public byte[] getData()
     {
         byte[] values;
-        values = CodecUtils.DecodeWithEncrypt(data, encrypt);
+        values = CodecUtils.DecodeWithEncrypt(Data, Encrypt);
         return values;
     }
 
     public byte[] getData(byte[] aesKeyArray)
     {
         byte[] values;
-        values = AESUtil.AESEncrypt(data, aesKeyArray);
+        values = AESUtil.AESEncrypt(Data, aesKeyArray);
         return values;
     }
 
@@ -479,106 +482,153 @@ public class Command
     {
         Console.WriteLine("data=" + DigitUtil.byteArrayToHexString(data), DBG);
         Console.WriteLine("aesKeyArray=" + DigitUtil.byteArrayToHexString(aesKeyArray), DBG);
-        this.data = AESUtil.AESEncrypt(data, aesKeyArray);
-        this.length = (byte) this.data.Length;
+
+        this.Data = AESUtil.AESEncrypt(data, aesKeyArray);
+        if (this.Data.Length > 255)
+        {
+            throw new BaseException("Data length is too long: " + this.Data.Length);
+        }
+
+        Length = (byte) this.Data.Length;
     }
 
     public bool isChecksumValid()
     {
-        return mIsChecksumValid;
+        return _mIsChecksumValid;
     }
 
     public LockType getLockType()
     {
-        return lockType;
+        return _lockType;
     }
 
-    public void setLockType(LockType lockType)
+    public void SetLockType(LockType lockType)
     {
-        this.lockType = lockType;
+        this._lockType = lockType;
     }
 
-    public String getLockVersionString()
+    public string GetLockVersionString()
     {
-        return JsonSerializer.Serialize(getLockVersion());
+        return JsonSerializer.Serialize(GetLockVersion());
     }
 
-    public LockVersion getLockVersion()
+    public LockVersion GetLockVersion()
     {
-        short org = DigitUtil.byteArrayToShort(organization);
-        short sub_org = DigitUtil.byteArrayToShort(sub_organization);
-        LockVersion lockVersion =
-            new LockVersion((sbyte) protocol_type, (sbyte) sub_version, (sbyte) scene, org, sub_org);
+        var org = DigitUtil.byteArrayToShort(Organization);
+        var sub_org = DigitUtil.byteArrayToShort(SubOrganization);
+        var lockVersion =
+            new LockVersion((sbyte) ProtocolType, (sbyte) _subVersion, (sbyte) _scene, org, sub_org);
         return lockVersion;
     }
 
-    private void generateLockType()
+    private void GenerateLockType()
     {
-        if (protocol_type == 0x05 && sub_version == 0x03 && scene == 0x07)
-            setLockType(LockType.LOCK_TYPE_V3_CAR);
-        else if (protocol_type == 0x0a && sub_version == 0x01)
-            setLockType(LockType.LOCK_TYPE_CAR);
-        else if (protocol_type == 0x05 && sub_version == 0x03)
-            setLockType(LockType.LOCK_TYPE_V3);
-        else if (protocol_type == 0x05 && sub_version == 0x04)
-            setLockType(LockType.LOCK_TYPE_V2S_PLUS);
-        else if (protocol_type == 0x05 && sub_version == 0x01)
-            setLockType(LockType.LOCK_TYPE_V2S);
-        else if (protocol_type == 0x0b && sub_version == 0x01)
-            setLockType(LockType.LOCK_TYPE_MOBI);
-        else if (protocol_type == 0x03)
-            setLockType(LockType.LOCK_TYPE_V2);
+        if (ProtocolType == 0x05 && _subVersion == 0x03 && _scene == 0x07)
+            SetLockType(LockType.LOCK_TYPE_V3_CAR);
+        else if (ProtocolType == 0x0a && _subVersion == 0x01)
+            SetLockType(LockType.LOCK_TYPE_CAR);
+        else if (ProtocolType == 0x05 && _subVersion == 0x03)
+            SetLockType(LockType.LOCK_TYPE_V3);
+        else if (ProtocolType == 0x05 && _subVersion == 0x04)
+            SetLockType(LockType.LOCK_TYPE_V2S_PLUS);
+        else if (ProtocolType == 0x05 && _subVersion == 0x01)
+            SetLockType(LockType.LOCK_TYPE_V2S);
+        else if (ProtocolType == 0x0b && _subVersion == 0x01)
+            SetLockType(LockType.LOCK_TYPE_MOBI);
+        else if (ProtocolType == 0x03)
+            SetLockType(LockType.LOCK_TYPE_V2);
     }
 
-    public byte[] buildCommand()
+    /**
+   -----------------------------------------------------------------------------------------------------
+   |         HEADER         |      DATA      |             DATA PACKET 2              |  DP 3  |  TAIL |
+   |7f5a0503020001000155aa20|7c247a4d52ac7ee8 90a9158c42380dca524ffafd927212d375681e97 3dcf670a|59 0d0a|
+   -----------------------------------------------------------------------------------------------------
+
+   Bytes (in DEC):
+   00 = "Header[0]"
+   01 = "Header[1]"
+   02 = "Protocol Type"
+   03 = "Sub Version" - lockVersion.getProtocolVersion()
+   04 = "Scene"
+   05 = "Organization[0]" - lockVersion.getGroupId()
+   06 = "Organization[1]" - |
+   07 = "Sub organization[0]" - lockVersion.getOrgId()
+   08 = "Sub organization[1]" - |
+   09 = "Command" (ID?)
+   10 = "Encrypt" (Byte?)
+   11 = "Length" (Of whole data)
+   12 = Actual Data
+
+   PACKET TAIL
+   "59 0d 0a" = "59" is the CRC byte of whole header+data
+   (in this case begins from 7f and ends at 670a) in CRC8/MAXIM format
+   and "0d 0a" occurs at the end of every packet,
+   which is a carriage return + line feed (CR+LF) in ASCII.
+     */
+    public byte[] BuildCommand()
     {
-        if (protocol_type >= 0x05)
+        if (ProtocolType >= 0x05)
         {
-            byte[] commandWithoutChecksum = new byte[2 + 1 + 1 + 1 + 2 + 2 + 1 + 1 + 1 + this.length];
-            commandWithoutChecksum[0] = this.header[0];
-            commandWithoutChecksum[1] = this.header[1];
-            commandWithoutChecksum[2] = this.protocol_type;
-            commandWithoutChecksum[3] = this.sub_version;
-            commandWithoutChecksum[4] = this.scene;
-            commandWithoutChecksum[5] = this.organization[0];
-            commandWithoutChecksum[6] = this.organization[1];
-            commandWithoutChecksum[7] = this.sub_organization[0];
-            commandWithoutChecksum[8] = this.sub_organization[1];
-            commandWithoutChecksum[9] = this.command;
-            commandWithoutChecksum[10] = this.encrypt;
-            commandWithoutChecksum[11] = this.length;
+            var commandWithoutChecksum = new byte[2 + 1 + 1 + 1 + 2 + 2 + 1 + 1 + 1 + Length];
+            commandWithoutChecksum[0] = Header[0];
+            commandWithoutChecksum[1] = Header[1];
+            commandWithoutChecksum[2] = ProtocolType;
+            commandWithoutChecksum[3] = _subVersion;
+            commandWithoutChecksum[4] = _scene;
+            commandWithoutChecksum[5] = Organization[0];
+            commandWithoutChecksum[6] = Organization[1];
+            commandWithoutChecksum[7] = SubOrganization[0];
+            commandWithoutChecksum[8] = SubOrganization[1];
+            commandWithoutChecksum[9] = CommandType;
+            commandWithoutChecksum[10] = Encrypt;
+            commandWithoutChecksum[11] = Length;
 
-            if (this.data != null && this.data.Length > 0)
-                Array.Copy(this.data, 0, commandWithoutChecksum, 12, this.data.Length);
+            if (Data != null && Data.Length > 0)
+                Array.Copy(Data, 0, commandWithoutChecksum, 12, Data.Length);
 
-            byte[] commandWithChecksum = new byte[commandWithoutChecksum.Length + 1];
-            byte checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
+            var commandWithChecksum = new byte[commandWithoutChecksum.Length + 1];
+            var checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
             Array.Copy(commandWithoutChecksum, 0, commandWithChecksum, 0, commandWithoutChecksum.Length);
             commandWithChecksum[commandWithChecksum.Length - 1] = checksum;
 
-            Console.WriteLine("BuildCommand : " + (char) command + "-" + string.Format("{0:#x}", command), DBG);
+            Console.WriteLine("BuildCommand : " + (char) CommandType + "-" + $"{CommandType:#x}", DBG);
             return commandWithChecksum;
         }
         else // V4 and earlier versions
         {
-            byte[] commandWithoutChecksum = new byte[2 + 1 + 1 + 1 + 1 + this.length];
-            commandWithoutChecksum[0] = this.header[0];
-            commandWithoutChecksum[1] = this.header[1];
-            commandWithoutChecksum[2] = this.protocol_type;
-            commandWithoutChecksum[3] = this.command;
-            commandWithoutChecksum[4] = this.encrypt;
-            commandWithoutChecksum[5] = this.length;
+            var commandWithoutChecksum = new byte[2 + 1 + 1 + 1 + 1 + Length];
+            commandWithoutChecksum[0] = Header[0];
+            commandWithoutChecksum[1] = Header[1];
+            commandWithoutChecksum[2] = ProtocolType;
+            commandWithoutChecksum[3] = CommandType;
+            commandWithoutChecksum[4] = Encrypt;
+            commandWithoutChecksum[5] = Length;
 
-            if (this.data != null && this.data.Length > 0)
-                Array.Copy(this.data, 0, commandWithoutChecksum, 6, this.data.Length);
+            if (Data != null && Data.Length > 0)
+                Array.Copy(Data, 0, commandWithoutChecksum, 6, Data.Length);
 
-            byte[] commandWithChecksum = new byte[commandWithoutChecksum.Length + 1];
-            byte checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
+            var commandWithChecksum = new byte[commandWithoutChecksum.Length + 1];
+            var checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
             Array.Copy(commandWithoutChecksum, 0, commandWithChecksum, 0, commandWithoutChecksum.Length);
             commandWithChecksum[commandWithChecksum.Length - 1] = checksum;
 
-            Console.WriteLine("BuildCommand : " + (char) command, DBG);
+            Console.WriteLine("BuildCommand : " + (char) CommandType, DBG);
             return commandWithChecksum;
         }
+    }
+
+    public void SetCommandType(CommandType commandType)
+    {
+        CommandType = (byte) commandType;
+    }
+
+
+    public static Command From(TTDevice device, AbstractCommand command)
+    {
+        var cmd = new Command(device.GetLockType());
+        cmd.SetCommandType(command.GetCommandType());
+        cmd.setData(command.Build(), device.GetAesKeyArray());
+        return cmd;
     }
 }

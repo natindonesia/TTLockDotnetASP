@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using Shared.Api;
 using Shared.Entity;
 using Shared.Enums;
 
@@ -31,6 +33,16 @@ public class TTDevice : IDisposable
     public const sbyte STATUS_PARK_UNLOCK_HAS_CAR = 3;
 
     public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
+    public static readonly String UuidService = "00001910-0000-1000-8000-00805f9b34fb";
+    public static readonly String UuidWrite = "0000fff2-0000-1000-8000-00805f9b34fb";
+    public static readonly String UuidRead = "0000fff4-0000-1000-8000-00805f9b34fb";
+
+
+    private static readonly String DeviceInformationService = "0000180a-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadModelNumberUuid = "00002a24-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadFirmwareRevisionUuid = "00002a26-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadHardwareRevisionUuid = "00002a27-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadManufacturerNameUuid = "00002a29-0000-1000-8000-00805f9b34fb";
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
@@ -71,12 +83,14 @@ public class TTDevice : IDisposable
     public LockType LockType = LockType.UNKNOWN;
     protected string Manufacturer = "unknown";
     protected string Model = "unknown";
-    public string Name = "unknown";
+    public string? Name = "unknown";
     protected byte OrgId = 0;
     protected int ParkStatus = 0;
     public sbyte ProtocolType = 0;
     public sbyte ProtocolVersion = 0;
     protected int RemoteUnlockSwitch = 0;
+
+    protected ConcurrentQueue<Command> ResponseQueue = new ConcurrentQueue<Command>();
     protected string Rssi = "0";
     public sbyte Scene = 0;
     protected sbyte TxPowerLevel = 0;
@@ -94,6 +108,8 @@ public class TTDevice : IDisposable
     public bool IsTelinkGatewayDfuMode { get; set; }
 
     public GatewayType GatewayType { get; set; }
+
+    public bool IsInitialized => !IsSettingMode;
 
     public void Dispose()
     {
@@ -333,18 +349,17 @@ FF: Type: Manufacture Data
     protected void OnIncomingData(byte[] data)
     {
         IncomingData = IncomingData.Concat(data).ToArray();
-        if (IncomingData.Length >= 2)
-        {
-            // get last 2 bytes
-            var ending = IncomingData.Skip(IncomingData.Length - 2).ToArray();
-            if (ending.SequenceEqual(CRLF))
-            {
-                // we have a complete message
-                var message = System.Text.Encoding.UTF8.GetString(IncomingData);
-                Console.WriteLine($"Received: {message}");
-                IncomingData = [];
-            }
-        }
+        if (IncomingData.Length < 2) return;
+        // get last 2 bytes
+        var ending = IncomingData.Skip(IncomingData.Length - 2).ToArray();
+        if (!ending.SequenceEqual(CRLF)) return;
+        // we have a complete message
+        var message = System.Text.Encoding.UTF8.GetString(IncomingData);
+        // format in hex
+        var hex = BitConverter.ToString(IncomingData).Replace("-", " ");
+        Console.WriteLine($"Incoming data: {message} ({hex})");
+
+        IncomingData = [];
     }
 
     public async Task Connect()
@@ -352,33 +367,70 @@ FF: Type: Manufacture Data
         if (IsConnected) return;
         await ReadBasicInfo();
 
-        await Device.SubscribeCharacteristic("1910", "FFF4", OnIncomingData);
+        await Device.SubscribeCharacteristic(UuidService, UuidRead, OnIncomingData);
         IsConnected = true;
     }
 
     public async Task ReadBasicInfo()
     {
-        if (await Device.HasService("1800"))
+        Name = await Device.GetName();
+        if (Name != null && await Device.HasService("00001800-0000-1000-8000-00805f9b34fb"))
         {
-            var data = await Device.ReadCharacteristic("1800", "2A00");
+            var data = await Device.ReadCharacteristic("00001800-0000-1000-8000-00805f9b34fb",
+                "0000a2a00-0000-1000-8000-00805f9b34fb");
             Name = System.Text.Encoding.UTF8.GetString(data);
         }
 
-        if (await Device.HasService("180A"))
+        if (await Device.HasService(DeviceInformationService))
         {
-            var data = await Device.ReadCharacteristic("180A", "2A24");
+            var data = await Device.ReadCharacteristic(DeviceInformationService, ReadModelNumberUuid);
             Model = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A26");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadFirmwareRevisionUuid);
             Firmware = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A27");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadHardwareRevisionUuid);
             Hardware = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A29");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadManufacturerNameUuid);
             Manufacturer = System.Text.Encoding.UTF8.GetString(data);
         }
     }
 
+    public async Task SendCommand(Command command, bool ignoreCrc = false)
+    {
+        var data = command.BuildCommand();
+        // add CRLF to the end
+        data = data.Concat(CRLF).ToArray();
+        await Device.WriteCharacteristic(UuidService, UuidWrite, data);
+    }
+
+
+    public async Task<Command> SendCommandAndWait(Command command, bool ignoreCrc = false)
+    {
+        await SendCommand(command, ignoreCrc);
+        var timeout = 5000;
+        var start = DateTime.Now;
+        while (DateTime.Now - start < TimeSpan.FromMilliseconds(timeout))
+        {
+            if (ResponseQueue.TryDequeue(out var response)) return response;
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Command timed out waiting for response");
+    }
+
+
     public override string ToString()
     {
         return $"TTDevice: {Name} ({Address}) - {LockType}";
+    }
+
+    public async Task InitLock()
+    {
+        Console.WriteLine("Init lock");
+        await TTLockAPI.Init(this);
+    }
+
+    public byte[] GetAesKeyArray()
+    {
+        return TTLockAPI.DefaultAesKeyArray;
     }
 }

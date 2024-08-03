@@ -47,6 +47,10 @@ while (true)
         try
         {
             await device.ReadBasicInfo();
+            if (device.IsInitialized)
+            {
+                await device.InitLock();
+            }
         }
         catch (Exception ex)
         {
