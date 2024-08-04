@@ -1,6 +1,7 @@
 using System.Text;
 using Shared.Entity;
 using Shared.Enums;
+using Shared.Utils;
 
 namespace Shared.Api.Commands;
 
@@ -27,27 +28,17 @@ public class AddAdminCommand : AbstractCommand
 
     public override byte[] Build()
     {
-        var adminUnlock = new byte[8];
+        var values = new byte[4 + 4 + 7]; //4 + 4 + 7
 
-        // Write adminPs as a big-endian int at position 0
-        var adminPsBytes = BitConverter.GetBytes(AdminPassword);
-        if (BitConverter.IsLittleEndian) Array.Reverse(adminPsBytes);
-        Array.Copy(adminPsBytes, 0, adminUnlock, 0, 4);
+        var adminPsBytes = DigitUtil.IntegerToByteArray(AdminPassword);
+        var unlockKeyBytes = DigitUtil.IntegerToByteArray(UnlockKey);
+        var scienerBytes = Encoding.UTF8.GetBytes("SCIENER");
 
-        // Write unlockKey as a big-endian int at position 4
-        var unlockKeyBytes = BitConverter.GetBytes(UnlockKey);
-        if (BitConverter.IsLittleEndian) Array.Reverse(unlockKeyBytes);
-        Array.Copy(unlockKeyBytes, 0, adminUnlock, 4, 4);
+        Buffer.BlockCopy(adminPsBytes, 0, values, 0, 4);
+        Buffer.BlockCopy(unlockKeyBytes, 0, values, 4, 4);
+        Buffer.BlockCopy(scienerBytes, 0, values, 8, 7);
 
-        // Convert the string "SCIENER" to bytes
-        var scienerBytes = Encoding.ASCII.GetBytes("SCIENER");
-
-        // Concatenate the byte arrays
-        var result = new byte[adminUnlock.Length + scienerBytes.Length];
-        Buffer.BlockCopy(adminUnlock, 0, result, 0, adminUnlock.Length);
-        Buffer.BlockCopy(scienerBytes, 0, result, adminUnlock.Length, scienerBytes.Length);
-
-        return result;
+        return values;
     }
 
     public override CommandType GetCommandType()

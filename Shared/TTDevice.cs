@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Shared.Api;
 using Shared.Entity;
 using Shared.Enums;
+using Shared.Exceptions;
 
 namespace Shared;
 
@@ -437,8 +438,7 @@ FF: Type: Manufacture Data
             {
                 if (!response.isChecksumValid())
                 {
-                    Console.WriteLine("Checksum is invalid, retrying?");
-                    continue;
+                    throw new BaseException("Checksum is invalid");
                 }
 
                 return response;
@@ -463,6 +463,9 @@ FF: Type: Manufacture Data
         var aes = await TTLockAPI.GetAesKey(this);
         LockData.PrivateData.AesKey = aes;
         var admin = await TTLockAPI.AddAdmin(this);
+
+        await TTLockAPI.OperateFinished(this);
+
         LockData.PrivateData.Admin = admin.GetAdminData();
         this.IsSettingMode = false;
     }

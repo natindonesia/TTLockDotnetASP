@@ -1,4 +1,5 @@
 using Shared.Enums;
+using Shared.Utils;
 
 namespace Shared.Api.Commands;
 
@@ -41,8 +42,11 @@ public class UnlockCommand : AbstractCommand
     {
         if (!Sum.HasValue) return new byte[0];
         byte[] data = new byte[8];
-        BitConverter.GetBytes((uint) Sum.Value).CopyTo(data, 0);
-        BitConverter.GetBytes((uint) DateTimeOffset.UtcNow.ToUnixTimeSeconds()).CopyTo(data, 4);
+        var sumByteArray = DigitUtil.IntegerToByteArray(Sum.Value);
+        sumByteArray.CopyTo(data, 0);
+        var unixSeconds = (int) (System.DateTime.UtcNow.Second);
+        var unixSecondsByteArray = DigitUtil.IntegerToByteArray(unixSeconds);
+        Buffer.BlockCopy(unixSecondsByteArray, 0, data, 4, 4);
         return data;
     }
 

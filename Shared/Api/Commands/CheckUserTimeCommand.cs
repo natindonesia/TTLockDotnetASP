@@ -1,20 +1,29 @@
 using Shared.Enums;
+using Shared.Utils;
 
 namespace Shared.Api.Commands;
 
 public class CheckUserTimeCommand : AbstractCommand
 {
-    private string endDate;
-    private uint? lockFlagPos;
-    private string startDate;
-    private uint? uid;
+    private readonly long _endDate;
+    private readonly uint _lockFlagPos;
+    private readonly long _startDate;
+    private readonly int _uid;
 
-    public CheckUserTimeCommand()
+    public CheckUserTimeCommand(int uid, long startDate, long endDate, uint lockFlagPos)
     {
+        this._uid = uid;
+        this._startDate = startDate;
+        this._endDate = endDate;
+        this._lockFlagPos = lockFlagPos;
     }
 
     public CheckUserTimeCommand(byte[]? data) : base(data)
     {
+        _endDate = 0;
+        _lockFlagPos = 0;
+        _startDate = 0;
+        _uid = 0;
     }
 
     public override void ProcessData()
@@ -23,26 +32,19 @@ public class CheckUserTimeCommand : AbstractCommand
 
     public override byte[] Build()
     {
-        if (uid.HasValue && !string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate) && lockFlagPos.HasValue)
-        {
-            var data = new byte[17]; // 5+5+3+4
-            DateTimeToBuffer(startDate).CopyTo(data, 0);
-            BitConverter.GetBytes((uint) lockFlagPos.Value).CopyTo(data, 9); // overlap first byte
-            DateTimeToBuffer(endDate).CopyTo(data, 5);
-            BitConverter.GetBytes((uint) uid.Value).CopyTo(data, 13);
-            return data;
-        }
-
-        return new byte[0];
+        String sDateStr = "0001311800";
+        String eDateStr = "9911301800";
+        var data = new byte[17]; // 5+5+3+4
+        byte[] time = DigitUtil.ConvertTimeToByteArray(sDateStr + eDateStr);
+        Buffer.BlockCopy(time, 0, data, 0, 10);
+        data[10] = (byte) ((_lockFlagPos >> 16) & 0xFF);
+        data[11] = (byte) ((_lockFlagPos >> 8) & 0xFF);
+        data[12] = (byte) (_lockFlagPos & 0xFF);
+        byte[] uidArray = DigitUtil.IntegerToByteArray(_uid);
+        Buffer.BlockCopy(uidArray, 0, data, 13, 4);
+        return data;
     }
 
-    public void SetPayload(uint uid, string startDate, string endDate, uint lockFlagPos)
-    {
-        this.uid = uid;
-        this.startDate = startDate;
-        this.endDate = endDate;
-        this.lockFlagPos = lockFlagPos;
-    }
 
     public int GetPsFromLock()
     {

@@ -20,14 +20,16 @@ public abstract class AbstractCommand
             return;
         }
 
+        Data = data;
         try
         {
-            this.Response = (CommandResponse) Data[1];
+            this.Response = (CommandResponse) ((sbyte) Data[1]);
         }
         catch
         {
             this.Response = CommandResponse.UNKNOWN;
         }
+
 
         this.Data = data[2..];
     }

@@ -1,5 +1,7 @@
 using Shared.Api.Commands;
 using Shared.Enums;
+using Shared.Exceptions;
+using Shared.Utils;
 
 namespace Shared.Api;
 
@@ -19,8 +21,7 @@ public static class TTLockAPI
     public static async Task Init(TTDevice device)
     {
         var request = Command.From(device, new InitCommand());
-        var res = await device.SendCommandAndWait(request);
-        res.Validate();
+        await device.SendCommandAndWait(request);
     }
 
     public static async Task<byte[]> GetAesKey(TTDevice device)
@@ -30,20 +31,30 @@ public static class TTLockAPI
         var res = await device.SendCommandAndWait(request);
         var data = res.GetData(device.GetAesKeyArray());
         var resCommand = new GetAesKeyCommand(data);
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new Exception("GetAesKey failed");
+        }
+
         resCommand.ProcessData();
         return resCommand.GetAESKey();
     }
 
-    public static async Task<int> CheckUserTime(TTDevice device, uint uid = 0, string startDate = "000101000000",
-        string endDate = "991231235959", uint lockFlagPos = 0)
+    public static async Task<int> CheckUserTime(TTDevice device, int uid = 0, long startDate = 949338000000,
+        long endDate = 4099741200000, uint lockFlagPos = 0)
     {
-        var command = new CheckUserTimeCommand();
-        command.SetPayload(uid, startDate, endDate, lockFlagPos);
+        var command = new CheckUserTimeCommand(uid, startDate, endDate, lockFlagPos);
         var request = Command.From(device, command);
         var res = await device.SendCommandAndWait(request);
         var data = res.GetData(device.GetAesKeyArray());
         var resCommand = new CheckUserTimeCommand(data);
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("CheckUserTime failed");
+        }
+
         resCommand.ProcessData();
+
         return resCommand.GetPsFromLock();
     }
 
@@ -54,18 +65,42 @@ public static class TTLockAPI
         var request = Command.From(de, command);
         var res = await de.SendCommandAndWait(request);
         var resCommand = new UnlockCommand(res.GetData(de.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("Unlock failed");
+        }
+
         resCommand.ProcessData();
         return resCommand;
     }
 
     public static async Task<AddAdminCommand> AddAdmin(TTDevice device)
     {
-        var adminPassword = (int) (Random.NextDouble() * 100000000);
-        var unlockKey = (int) (Random.NextDouble() * 100000000);
+        var adminPassword = (int) Math.Floor(Random.NextDouble() * 100000000);
+        var unlockKey = (int) Math.Floor(Random.NextDouble() * 1000000000);
+        System.Console.WriteLine($"AdminPassword: {adminPassword}, UnlockKey: {unlockKey}");
         var command = new AddAdminCommand(adminPassword, unlockKey);
         var request = Command.From(device, command);
-        await device.SendCommandAndWait(request);
+        var res = await device.SendCommandAndWait(request);
+        var resCommand = new AddAdminCommand(res.GetData(device.GetAesKeyArray()));
+        resCommand.ProcessData();
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("AddAdmin failed");
+        }
 
         return command;
+    }
+
+    public static async Task OperateFinished(TTDevice ttDevice)
+    {
+        var command = new OperateFinishedCommand();
+        var request = Command.From(ttDevice, command);
+        var res = await ttDevice.SendCommandAndWait(request);
+        var resCommand = new OperateFinishedCommand(res.GetData(ttDevice.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new Exception("OperateFinished failed");
+        }
     }
 }
