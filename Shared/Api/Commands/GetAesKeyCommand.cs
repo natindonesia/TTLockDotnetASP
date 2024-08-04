@@ -3,12 +3,24 @@ using Shared.Enums;
 
 namespace Shared.Api.Commands;
 
-public class AESKeyCommand : AbstractCommand
+public class GetAesKeyCommand : AbstractCommand
 {
     protected byte[]? AesKey;
 
+    public GetAesKeyCommand() : base()
+    {
+    }
+
+    public GetAesKeyCommand(byte[]? data) : base(data)
+    {
+    }
+
     public override void ProcessData()
     {
+        if (Data != null)
+        {
+            AesKey = Data;
+        }
     }
 
     public void SetAESKey(byte[] aesKey)
@@ -20,7 +32,7 @@ public class AESKeyCommand : AbstractCommand
     {
         if (AesKey == null)
         {
-            return Encoding.UTF8.GetBytes("SCIENER");
+            return Encoding.UTF8.GetBytes(Const.VENDOR);
         }
 
         var data = new byte[AesKey.Length + 2];
@@ -34,5 +46,10 @@ public class AESKeyCommand : AbstractCommand
     public override CommandType GetCommandType()
     {
         return CommandType.COMM_GET_AES_KEY;
+    }
+
+    public byte[] GetAESKey()
+    {
+        return AesKey;
     }
 }

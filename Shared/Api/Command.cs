@@ -334,7 +334,7 @@ public class Command
     private byte _subVersion;
     public byte Checksum; // 校验		1 字节
     public byte CommandType; // 命令字 	1 字节
-    public byte[]? Data; // 数据
+    protected byte[]? Data; // 数据
     public byte Encrypt; // 加密字		1 字节
 
     public byte[] Header; // 帧首 		2 字节
@@ -392,50 +392,54 @@ public class Command
 
     public Command(byte[] responseBytes)
     {
+        if (responseBytes.Length < 7)
+        {
+            throw new BaseException("Invalid command length: " + responseBytes.Length);
+        }
+
         Header = new byte[2];
         Header[0] = responseBytes[0];
         Header[1] = responseBytes[1];
-        ProtocolType = responseBytes[2];
-        try
+        if (Header[0] != 0x7F || Header[1] != 0x5A)
         {
-            if (ProtocolType >= 5) // new protocol
-            {
-                Organization = new byte[2];
-                SubOrganization = new byte[2];
-                _subVersion = responseBytes[3];
-                _scene = responseBytes[4];
-                Organization[0] = responseBytes[5];
-                Organization[1] = responseBytes[6];
-                SubOrganization[0] = responseBytes[7];
-                SubOrganization[1] = responseBytes[8];
-                CommandType = responseBytes[9];
-                Encrypt = responseBytes[10];
-                Length = responseBytes[11];
-                Data = new byte[Length];
-                Array.Copy(responseBytes, 12, Data, 0, Length);
-            }
-            else
-            {
-                CommandType = responseBytes[3];
-                Encrypt = responseBytes[4];
-                Length = responseBytes[5];
-                Data = new byte[Length];
-                Array.Copy(responseBytes, 6, Data, 0, Length);
-            }
+            //throw new BaseException("Invalid header: " + DigitUtil.byteArrayToHexString(Header));
+        }
 
-            this.Checksum = responseBytes[responseBytes.Length - 1];
-            var commandWithoutChecksum = new byte[responseBytes.Length - 1];
-            Array.Copy(responseBytes, 0, commandWithoutChecksum, 0, commandWithoutChecksum.Length);
-            var checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
-            _mIsChecksumValid = checksum == this.Checksum;
-            Console.WriteLine("checksum=" + checksum + " this.checksum=" + this.Checksum);
-            Console.WriteLine("mIsChecksumValid : " + _mIsChecksumValid);
-            GenerateLockType();
-        }
-        catch (Exception e)
+        ProtocolType = responseBytes[2];
+
+        if (ProtocolType >= 5) // new protocol
         {
-            Console.WriteLine(e);
+            Organization = new byte[2];
+            SubOrganization = new byte[2];
+            _subVersion = responseBytes[3];
+            _scene = responseBytes[4];
+            Organization[0] = responseBytes[5];
+            Organization[1] = responseBytes[6];
+            SubOrganization[0] = responseBytes[7];
+            SubOrganization[1] = responseBytes[8];
+            CommandType = responseBytes[9];
+            Encrypt = responseBytes[10];
+            Length = responseBytes[11];
+            Data = new byte[Length];
+            Array.Copy(responseBytes, 12, Data, 0, Length);
         }
+        else
+        {
+            CommandType = responseBytes[3];
+            Encrypt = responseBytes[4];
+            Length = responseBytes[5];
+            Data = new byte[Length];
+            Array.Copy(responseBytes, 6, Data, 0, Length);
+        }
+
+        this.Checksum = responseBytes[responseBytes.Length - 1];
+        var commandWithoutChecksum = new byte[responseBytes.Length - 1];
+        Array.Copy(responseBytes, 0, commandWithoutChecksum, 0, commandWithoutChecksum.Length);
+        var checksum = CodecUtils.CrcCompute(commandWithoutChecksum);
+        _mIsChecksumValid = checksum == this.Checksum;
+        Console.WriteLine("checksum=" + checksum + " this.checksum=" + this.Checksum);
+        Console.WriteLine("mIsChecksumValid : " + _mIsChecksumValid);
+        GenerateLockType();
     }
 
     public void setCommand(byte command)
@@ -458,23 +462,28 @@ public class Command
         this._scene = scene;
     }
 
-    public void setData(byte[] data)
+    public void SetData(byte[] data)
     {
         this.Data = CodecUtils.EncodeWithEncrypt(data, Encrypt);
         Length = (byte) this.Data.Length;
     }
 
-    public byte[] getData()
+    public byte[] GetData()
     {
         byte[] values;
         values = CodecUtils.DecodeWithEncrypt(Data, Encrypt);
         return values;
     }
 
-    public byte[] getData(byte[] aesKeyArray)
+    public byte[] GetData(byte[] aesKeyArray)
     {
+        if (Data == null)
+        {
+            throw new ArgumentNullException(nameof(Data));
+        }
+
         byte[] values;
-        values = AESUtil.AESEncrypt(Data, aesKeyArray);
+        values = AESUtil.AesDecrypt(Data, aesKeyArray);
         return values;
     }
 
@@ -483,7 +492,7 @@ public class Command
         Console.WriteLine("data=" + DigitUtil.byteArrayToHexString(data), DBG);
         Console.WriteLine("aesKeyArray=" + DigitUtil.byteArrayToHexString(aesKeyArray), DBG);
 
-        this.Data = AESUtil.AESEncrypt(data, aesKeyArray);
+        this.Data = AESUtil.AesEncrypt(data, aesKeyArray);
         if (this.Data.Length > 255)
         {
             throw new BaseException("Data length is too long: " + this.Data.Length);
@@ -592,7 +601,6 @@ public class Command
             Array.Copy(commandWithoutChecksum, 0, commandWithChecksum, 0, commandWithoutChecksum.Length);
             commandWithChecksum[commandWithChecksum.Length - 1] = checksum;
 
-            Console.WriteLine("BuildCommand : " + (char) CommandType + "-" + $"{CommandType:#x}", DBG);
             return commandWithChecksum;
         }
         else // V4 and earlier versions
@@ -613,7 +621,6 @@ public class Command
             Array.Copy(commandWithoutChecksum, 0, commandWithChecksum, 0, commandWithoutChecksum.Length);
             commandWithChecksum[commandWithChecksum.Length - 1] = checksum;
 
-            Console.WriteLine("BuildCommand : " + (char) CommandType, DBG);
             return commandWithChecksum;
         }
     }
@@ -630,5 +637,24 @@ public class Command
         cmd.SetCommandType(command.GetCommandType());
         cmd.setData(command.Build(), device.GetAesKeyArray());
         return cmd;
+    }
+
+    public void Check(byte[] aesKeyArray)
+    {
+        if (Data == null) return;
+        var data = GetData(aesKeyArray);
+    }
+
+    public CommandType GetCommandType()
+    {
+        return (CommandType) CommandType;
+    }
+
+    public void Validate()
+    {
+        if (!isChecksumValid())
+        {
+            throw new InvalidChecksumException("Invalid checksum");
+        }
     }
 }

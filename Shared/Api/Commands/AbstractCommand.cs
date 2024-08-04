@@ -5,20 +5,31 @@ namespace Shared.Api.Commands;
 public abstract class AbstractCommand
 {
     public readonly byte[]? Data;
-    public readonly CommandResponse Response;
+    public CommandResponse Response;
 
-    public AbstractCommand() : this(null)
+    public AbstractCommand()
     {
         Response = CommandResponse.UNKNOWN;
     }
 
     public AbstractCommand(byte[]? data)
     {
-        if (data != null)
+        if (data == null || data.Length < 2)
         {
-            Data = new byte[data.Length];
+            Response = CommandResponse.UNKNOWN;
+            return;
+        }
+
+        try
+        {
             this.Response = (CommandResponse) Data[1];
         }
+        catch
+        {
+            this.Response = CommandResponse.UNKNOWN;
+        }
+
+        this.Data = data[2..];
     }
 
     public abstract void ProcessData();

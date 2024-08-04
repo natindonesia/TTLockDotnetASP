@@ -12,12 +12,16 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     protected Device Device;
 
+
     public LinuxBluetoothDevice(Device device)
     {
         Device = device;
+        // doesn't work bruh
         Device.Disconnected += (sender, args) =>
         {
             Connected = false;
+            System.Console.WriteLine("Disconnected");
+            Disconnected?.Invoke(sender, args);
             return Task.CompletedTask;
         };
     }
@@ -134,6 +138,16 @@ public class LinuxBluetoothDevice : IBluetoothDevice
         await characteristic.StartNotifyAsync();
     }
 
+    public Task OnDisconnected(Action onDisconnected)
+    {
+        Disconnected += (sender, args) =>
+        {
+            onDisconnected();
+            return Task.CompletedTask;
+        };
+        return Task.CompletedTask;
+    }
+
     public async Task<string?> GetName()
     {
         var props = await Device.GetPropertiesAsync();
@@ -145,6 +159,8 @@ public class LinuxBluetoothDevice : IBluetoothDevice
         Device.Dispose();
     }
 
+    private event Func<object, object, Task> Disconnected;
+
     public static async Task<LinuxBluetoothDevice> FromDevice(Device device)
     {
         LinuxBluetoothDevice ble = new LinuxBluetoothDevice(device);
@@ -152,9 +168,10 @@ public class LinuxBluetoothDevice : IBluetoothDevice
         ble.Address = properties.Address;
         if (ble.Address == "F2:C1:AD:4C:AE:FD")
         {
+            // hack
             ble.RawData = new byte[]
             {
-                2, 1, 6, 2, 10, 191, 3, 2, 16, 25, 18, 255, 5, 3, 2, 28, 90, 176, 0, 244, 249, 83, 101, 253, 174, 76,
+                2, 1, 6, 2, 10, 191, 3, 2, 16, 25, 18, 255, 5, 3, 2, 12, 85, 176, 0, 244, 249, 83, 101, 253, 174, 76,
                 173, 193, 242, 11, 9, 68, 48, 49, 95, 102, 100, 97, 101, 52, 99, 5, 18, 20, 0, 36, 0
             };
         }
@@ -165,11 +182,19 @@ public class LinuxBluetoothDevice : IBluetoothDevice
 
     protected async Task Connect()
     {
+        try
+        {
+            await Device.WaitForPropertyValueAsync("Connected", value: true, timeout);
+        }
+        catch (Exception)
+        {
+            Connected = false; // no?
+        }
+
         if (!Connected)
         {
             await Device.ConnectAsync();
             await Device.WaitForPropertyValueAsync("Connected", value: true, timeout);
-            await Device.WaitForPropertyValueAsync("ServicesResolved", value: true, timeout);
         }
     }
 }

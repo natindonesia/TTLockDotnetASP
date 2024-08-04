@@ -1,7 +1,10 @@
-﻿using Console;
+﻿using System.Text.Json;
+using System.Text.Json.Serialization;
+using Console;
 using Linux.Bluetooth;
 using Linux.Bluetooth.Extensions;
 using Shared;
+using Shared.Entity;
 using Shared.Enums;
 
 Adapter? adapter = (await BlueZManager.GetAdaptersAsync()).FirstOrDefault();
@@ -40,21 +43,56 @@ foreach (var device in devices)
 }
 
 System.Console.WriteLine("Found " + ttDevices.Count + " TT Devices");
+// loading data
+// mkdir data
+
+if (!System.IO.Directory.Exists("data"))
+{
+    System.IO.Directory.CreateDirectory("data");
+}
+
+foreach (var device in ttDevices)
+{
+    var file = "data/" + device.Address + ".json";
+    if (System.IO.File.Exists(file))
+    {
+        try
+        {
+            var json = System.IO.File.ReadAllText(file);
+            device.LockData = JsonSerializer.Deserialize<TTLockData>(json) ?? throw new InvalidOperationException();
+        }
+        catch (Exception ex)
+        {
+            System.Console.WriteLine(ex);
+        }
+    }
+}
+
 while (true)
 {
     foreach (var device in ttDevices)
     {
         try
         {
-            await device.ReadBasicInfo();
-            if (device.IsInitialized)
+            if (!device.IsInitialized)
             {
+                await device.ReadBasicInfo();
                 await device.InitLock();
+                // we got the data, let's save it
+                var serialized = JsonSerializer.Serialize(device.LockData);
+                System.IO.File.WriteAllText("data/" + device.Address + ".json", serialized);
+            }
+            else
+            {
+                var serialized = JsonSerializer.Serialize(device.LockData);
+                System.Console.WriteLine(device.Address + ": " + serialized);
+
+                await device.Unlock();
             }
         }
         catch (Exception ex)
         {
-            System.Console.WriteLine(ex.Message);
+            System.Console.WriteLine(ex);
             System.Console.WriteLine("Retrying...");
 
             continue;

@@ -46,7 +46,7 @@ public class TTDevice : IDisposable
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
-    protected string Address = "";
+    public string Address = "";
     protected sbyte BatteryCapacity = 0;
     protected long Date = 0;
 
@@ -60,7 +60,7 @@ public class TTDevice : IDisposable
 
     protected byte[] IncomingData = [];
 
-    protected bool IsConnected = false;
+    protected volatile bool IsConnected = false;
 
     protected bool IsDfuMode = false;
     protected bool IsNoLockService = false;
@@ -79,6 +79,8 @@ public class TTDevice : IDisposable
         IsLift,
         IsPowerSaver,
         IsRemoteControlDevice = false;
+
+    public TTLockData LockData = new TTLockData();
 
     public LockType LockType = LockType.UNKNOWN;
     protected string Manufacturer = "unknown";
@@ -109,7 +111,7 @@ public class TTDevice : IDisposable
 
     public GatewayType GatewayType { get; set; }
 
-    public bool IsInitialized => !IsSettingMode;
+    public bool IsInitialized => LockData.PrivateData.AesKey.Length != 0 || !IsSettingMode;
 
     public void Dispose()
     {
@@ -257,7 +259,7 @@ FF: Type: Manufacture Data
                         // convert to bytes
                         var macAddress = new byte[6];
                         for (var i = 0; i < 6; i++) macAddress[i] = (byte) macAddressBytes[i];
-                        Address = BitConverter.ToString(macAddress).Replace("-", ":");
+                        //Address = BitConverter.ToString(macAddress).Replace("-", ":");
                     }
 
                     break;
@@ -348,23 +350,37 @@ FF: Type: Manufacture Data
 
     protected void OnIncomingData(byte[] data)
     {
-        IncomingData = IncomingData.Concat(data).ToArray();
-        if (IncomingData.Length < 2) return;
-        // get last 2 bytes
-        var ending = IncomingData.Skip(IncomingData.Length - 2).ToArray();
-        if (!ending.SequenceEqual(CRLF)) return;
-        // we have a complete message
-        var message = System.Text.Encoding.UTF8.GetString(IncomingData);
-        // format in hex
-        var hex = BitConverter.ToString(IncomingData).Replace("-", " ");
-        Console.WriteLine($"Incoming data: {message} ({hex})");
+        try
+        {
+            IncomingData = IncomingData.Concat(data).ToArray();
+            if (IncomingData.Length < 2) return;
+            // get last 2 bytes
+            var ending = IncomingData.Skip(IncomingData.Length - 2).ToArray();
+            if (!ending.SequenceEqual(CRLF)) return;
+            // format in hex
+            var hex = BitConverter.ToString(IncomingData).Replace("-", " ");
+            Console.WriteLine($"Incoming data: ({hex})");
 
-        IncomingData = [];
+            // remove CRLF
+            IncomingData = IncomingData.Take(IncomingData.Length - 2).ToArray();
+
+            var command = new Command(IncomingData);
+            ResponseQueue.Enqueue(command);
+
+
+            IncomingData = [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Failed to process incoming data");
+            Console.WriteLine(ex);
+        }
     }
 
     public async Task Connect()
     {
         if (IsConnected) return;
+        await Device.OnDisconnected(() => IsConnected = false);
         await ReadBasicInfo();
 
         await Device.SubscribeCharacteristic(UuidService, UuidRead, OnIncomingData);
@@ -391,14 +407,21 @@ FF: Type: Manufacture Data
             Hardware = System.Text.Encoding.UTF8.GetString(data);
             data = await Device.ReadCharacteristic(DeviceInformationService, ReadManufacturerNameUuid);
             Manufacturer = System.Text.Encoding.UTF8.GetString(data);
+            LockData.Address = Address;
         }
     }
 
     public async Task SendCommand(Command command, bool ignoreCrc = false)
     {
+        await Connect();
         var data = command.BuildCommand();
         // add CRLF to the end
         data = data.Concat(CRLF).ToArray();
+#if DEBUG
+        var hex = BitConverter.ToString(data).Replace("-", " ");
+        Console.WriteLine($"Sending command: {command.GetCommandType()} ({hex})");
+
+#endif
         await Device.WriteCharacteristic(UuidService, UuidWrite, data);
     }
 
@@ -410,7 +433,17 @@ FF: Type: Manufacture Data
         var start = DateTime.Now;
         while (DateTime.Now - start < TimeSpan.FromMilliseconds(timeout))
         {
-            if (ResponseQueue.TryDequeue(out var response)) return response;
+            if (ResponseQueue.TryDequeue(out var response))
+            {
+                if (!response.isChecksumValid())
+                {
+                    Console.WriteLine("Checksum is invalid, retrying?");
+                    continue;
+                }
+
+                return response;
+            }
+
             await Task.Delay(100);
         }
 
@@ -427,10 +460,24 @@ FF: Type: Manufacture Data
     {
         Console.WriteLine("Init lock");
         await TTLockAPI.Init(this);
+        var aes = await TTLockAPI.GetAesKey(this);
+        LockData.PrivateData.AesKey = aes;
+        var admin = await TTLockAPI.AddAdmin(this);
+        LockData.PrivateData.Admin = admin.GetAdminData();
+        this.IsSettingMode = false;
     }
 
     public byte[] GetAesKeyArray()
     {
-        return TTLockAPI.DefaultAesKeyArray;
+        return this.LockData.PrivateData.AesKey.Length != 0
+            ? this.LockData.PrivateData.AesKey
+            : TTLockAPI.DefaultAesKeyArray;
+    }
+
+
+    public async Task Unlock()
+    {
+        var psFromLock = await TTLockAPI.CheckUserTime(this);
+        var unlockCommand = await TTLockAPI.Unlock(this, psFromLock);
     }
 }
