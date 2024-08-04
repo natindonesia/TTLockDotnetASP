@@ -1,3 +1,5 @@
+using Shared.Enums;
+
 namespace Shared.Entity;
 
 public record TTLockData
@@ -19,5 +21,8 @@ public record TTLockData
 
     // Lock private data
     public TTLockPrivateData PrivateData { get; set; } = new TTLockPrivateData();
+
+    // Capabilities
+    public HashSet<FeatureValue> Features { get; set; } = new HashSet<FeatureValue>();
     //  Operation Log entries
 }

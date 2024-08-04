@@ -119,8 +119,6 @@ public static class AESUtil
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    LogUtilW("source=" + BitConverter.ToString(source).Replace("-", ""), DBG);
-                    LogUtilW("key=" + BitConverter.ToString(key).Replace("-", ""), DBG);
                     return null;
                 }
             }

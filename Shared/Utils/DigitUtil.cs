@@ -90,6 +90,11 @@ public class DigitUtil
         return values;
     }
 
+    public static byte[] ConvertTimeToByteArray(DateTime time)
+    {
+        return ConvertTimeToByteArray(time.ToString("yyMMddHHmmss"));
+    }
+
     public static byte[] IntegerToByteArray(int value)
     {
         byte[] bytes = new byte[4];

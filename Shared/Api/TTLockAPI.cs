@@ -1,3 +1,4 @@
+using System.Globalization;
 using Shared.Api.Commands;
 using Shared.Enums;
 using Shared.Exceptions;
@@ -38,6 +39,76 @@ public static class TTLockAPI
 
         resCommand.ProcessData();
         return resCommand.GetAESKey();
+    }
+
+    public static async Task CalibrationTime(TTDevice device)
+    {
+        var command = new CalibrationTimeCommand(DateTime.Now);
+        var request = Command.From(device, command);
+        var res = await device.SendCommandAndWait(request);
+        var resCommand = new CalibrationTimeCommand(res.GetData(device.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("CalibrationTime failed");
+        }
+    }
+
+    public static async Task<DeviceFeaturesCommand> DeviceFeatures(TTDevice device)
+    {
+        var command = new DeviceFeaturesCommand();
+        var request = Command.From(device, command);
+        var res = await device.SendCommandAndWait(request);
+        var resCommand = new DeviceFeaturesCommand(res.GetData(device.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("DeviceFeatures failed");
+        }
+
+        resCommand.ProcessData();
+        return resCommand;
+    }
+
+    public static async Task<AutoLockManageCommand> AutoLockManage(TTDevice device, ushort? seconds)
+    {
+        var command = new AutoLockManageCommand();
+        if (seconds.HasValue)
+        {
+            command.SetTime(seconds.Value);
+        }
+
+        var request = Command.From(device, command);
+        var res = await device.SendCommandAndWait(request);
+        var resCommand = new AutoLockManageCommand(res.GetData(device.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("AutoLockManage failed");
+        }
+
+        resCommand.ProcessData();
+        return resCommand;
+    }
+
+    public static async Task<string> SetAdminKeyboardPwdCommand(TTDevice device, string? password = null)
+    {
+        if (password == null)
+        {
+            password = "";
+            for (var i = 0; i < 7; i++)
+            {
+                password += (Math.Floor(Random.NextDouble() * 10)).ToString(CultureInfo.CurrentCulture);
+            }
+        }
+
+        var command = new SetAdminKeyboardPwdCommand(password);
+        var request = Command.From(device, command);
+        var res = await device.SendCommandAndWait(request);
+        var resCommand = new SetAdminKeyboardPwdCommand(res.GetData(device.GetAesKeyArray()));
+        if (resCommand.Response != CommandResponse.SUCCESS)
+        {
+            throw new BaseException("SetAdminKeyboardPwdCommand failed");
+        }
+
+        return password;
     }
 
     public static async Task<int> CheckUserTime(TTDevice device, int uid = 0, long startDate = 949338000000,

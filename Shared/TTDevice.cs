@@ -462,7 +462,32 @@ FF: Type: Manufacture Data
         await TTLockAPI.Init(this);
         var aes = await TTLockAPI.GetAesKey(this);
         LockData.PrivateData.AesKey = aes;
+
         var admin = await TTLockAPI.AddAdmin(this);
+
+        await TTLockAPI.CalibrationTime(this);
+
+        var featuresCommand = await TTLockAPI.DeviceFeatures(this);
+        var features = featuresCommand.GetFeaturesList();
+        foreach (var feature in features)
+        {
+            Console.WriteLine($"Feature: {feature}");
+        }
+
+        LockData.Features = features;
+
+        ushort autoLockTime = 0;
+        if (features.Contains(FeatureValue.AUTO_LOCK))
+        {
+            var autoLockCommand = await TTLockAPI.AutoLockManage(this, autoLockTime);
+            autoLockTime = (ushort) autoLockCommand.GetTime();
+        }
+
+
+        if (LockType == LockType.LOCK_TYPE_V3)
+        {
+            LockData.PrivateData.AdminPasscode = await TTLockAPI.SetAdminKeyboardPwdCommand(this);
+        }
 
         await TTLockAPI.OperateFinished(this);
 
