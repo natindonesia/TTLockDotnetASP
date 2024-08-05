@@ -489,9 +489,6 @@ public class Command
 
     public void setData(byte[] data, byte[] aesKeyArray)
     {
-        Console.WriteLine("data=" + DigitUtil.byteArrayToHexString(data), DBG);
-        Console.WriteLine("aesKeyArray=" + DigitUtil.byteArrayToHexString(aesKeyArray), DBG);
-
         this.Data = AESUtil.AesEncrypt(data, aesKeyArray);
         if (this.Data.Length > 255)
         {

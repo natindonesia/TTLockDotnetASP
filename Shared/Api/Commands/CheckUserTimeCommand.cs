@@ -46,12 +46,16 @@ public class CheckUserTimeCommand : AbstractCommand
     }
 
 
-    public int GetPsFromLock()
+    public uint GetPsFromLock()
     {
         if (Data != null)
-            return BitConverter.ToInt32(Data, 0);
+        {
+            if (BitConverter.IsLittleEndian)
+                Array.Reverse(Data);
+            return BitConverter.ToUInt32(Data, 0);
+        }
         else
-            return -1;
+            return 0;
     }
 
     private byte[] DateTimeToBuffer(string dateTimeStr)

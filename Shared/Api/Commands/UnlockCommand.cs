@@ -50,9 +50,9 @@ public class UnlockCommand : AbstractCommand
         return data;
     }
 
-    public void SetSum(int psFromLock, int unlockKey)
+    public void SetSum(long psFromLock, long unlockKey)
     {
-        Sum = psFromLock + unlockKey;
+        Sum = (int) (psFromLock + unlockKey);
     }
 
     public int GetBatteryCapacity()

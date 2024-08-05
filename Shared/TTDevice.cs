@@ -506,6 +506,10 @@ FF: Type: Manufacture Data
     public async Task Unlock()
     {
         var psFromLock = await TTLockAPI.CheckUserTime(this);
+        Console.WriteLine($"Unlocking with psFromLock: {psFromLock}");
+
         var unlockCommand = await TTLockAPI.Unlock(this, psFromLock);
+        if (unlockCommand.BatteryCapacity.HasValue)
+            BatteryCapacity = (sbyte) unlockCommand.BatteryCapacity.Value;
     }
 }

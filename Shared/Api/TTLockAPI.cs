@@ -111,7 +111,7 @@ public static class TTLockAPI
         return password;
     }
 
-    public static async Task<int> CheckUserTime(TTDevice device, int uid = 0, long startDate = 949338000000,
+    public static async Task<uint> CheckUserTime(TTDevice device, int uid = 0, long startDate = 949338000000,
         long endDate = 4099741200000, uint lockFlagPos = 0)
     {
         var command = new CheckUserTimeCommand(uid, startDate, endDate, lockFlagPos);
@@ -129,7 +129,7 @@ public static class TTLockAPI
         return resCommand.GetPsFromLock();
     }
 
-    public static async Task<UnlockCommand> Unlock(TTDevice de, int psFromLock)
+    public static async Task<UnlockCommand> Unlock(TTDevice de, uint psFromLock)
     {
         var command = new UnlockCommand();
         command.SetSum(psFromLock, de.LockData.PrivateData.Admin.UnlockKey);
