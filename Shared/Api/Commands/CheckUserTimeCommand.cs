@@ -28,6 +28,10 @@ public class CheckUserTimeCommand : AbstractCommand
 
     public override void ProcessData()
     {
+        if (BitConverter.IsLittleEndian && Data != null)
+        {
+            Array.Reverse(Data);
+        }
     }
 
     public override byte[] Build()
@@ -48,14 +52,8 @@ public class CheckUserTimeCommand : AbstractCommand
 
     public uint GetPsFromLock()
     {
-        if (Data != null)
-        {
-            if (BitConverter.IsLittleEndian)
-                Array.Reverse(Data);
-            return BitConverter.ToUInt32(Data, 0);
-        }
-        else
-            return 0;
+        if (Data == null) return 0;
+        return BitConverter.ToUInt32(Data, 0);
     }
 
     private byte[] DateTimeToBuffer(string dateTimeStr)
