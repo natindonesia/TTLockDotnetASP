@@ -5,5 +5,5 @@ namespace Server.Models;
  */
 public interface IEspDevice
 {
-
+    public string Uuid { get; set; }
 }

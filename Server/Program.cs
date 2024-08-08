@@ -1,11 +1,16 @@
+using Server.Models;
 using Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddEnvironmentVariables();
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
-builder.Services.AddHostedService<Esp32ServerService>();
+builder.Services.Configure<Configuration>(builder.Configuration);
+
+builder.Services.AddSingleton<IEspCommunicationManagerService, MqttCommunicationService>();
+builder.Services.AddHostedService<ManagerHostedService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
