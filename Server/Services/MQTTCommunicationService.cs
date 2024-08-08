@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Text;
-using Jitbit.Utils;
 using Microsoft.Extensions.Options;
 using MQTTnet;
 using MQTTnet.Client;

@@ -18,10 +18,10 @@ flowchart TD
 sequenceDiagram
     participant UnlockDoor as Unlock Door <br> HTTP Req
     participant HTTPController as HTTP Controller
-    participant BluetoothManager as Bluetooth Device Manager
+    participant BluetoothManager as TTLock Device Manager
     participant ESPDeviceManager as ESP Device Manager <br> IEspDeviceManagerService
     participant NetworkManager as Network Manager <br> IEspCommunicationManagerService <br> MQTT
-    participant NetworkStack as Network Stack Wi-Fi
+    participant NetworkStack as Network Stack <br> Wi-Fi
 
     UnlockDoor->>HTTPController: HTTP Req
     HTTPController->>BluetoothManager: Request
