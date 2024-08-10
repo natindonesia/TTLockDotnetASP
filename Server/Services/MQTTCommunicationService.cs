@@ -148,7 +148,7 @@ public sealed class MqttCommunicationService : IEspCommunicationManagerService, 
             }
 
             response.Timestamp = DateTime.Now;
-            response.DeviceUuid = uuid;
+            response.DeviceUuid = Guid.Parse(uuid);
             response.Data = payload;
             OnEventHandler(response);
             return;

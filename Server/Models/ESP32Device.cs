@@ -11,31 +11,19 @@ using Shared.Enums;
 
 namespace Server.Models;
 
-public class Esp32Device
+public class Esp32Device : IEspDevice
 {
-    protected readonly Esp32ServerService ESP32ServerService;
-    protected List<ESPBluetoothDevice> BluetoothDevices = new();
-    protected bool IsBusy = false;
+    private readonly IEspCommunicationManagerService _communicationManagerService;
 
-
-    protected bool IsScanning = false;
-
-
-    public Esp32Device(TcpClient client, Esp32ServerService serverService)
+    public Esp32Device(IEspCommunicationManagerService communicationManagerService, Guid uuid)
     {
-        Client = client;
-        ESP32ServerService = serverService;
+        _communicationManagerService = communicationManagerService;
+        Uuid = uuid;
     }
 
-    public string? Uuid { get; set; }
-    public TcpClient Client { get; set; }
+    public Guid Uuid { get; set; }
 
-    public async Task Initialize()
-    {
-        Uuid = await GetUuid();
-    }
-
-    public void OnEvent(Esp32Event esp32Event)
+    public void OnDeviceNotResponding()
     {
     }
 
@@ -51,11 +39,7 @@ public class Esp32Device
             Params = parameters
         };
 
-        var requestJson = JsonConvert.SerializeObject(request);
-        var requestBytes = Encoding.UTF8.GetBytes(requestJson + "\n");
-        var stream = Client.GetStream();
-        await stream.WriteAsync(requestBytes, cancellationToken);
-        return await ESP32ServerService.WaitForResponse(request.Id, TimeSpan.FromSeconds(30), cancellationToken);
+        return await _communicationManagerService.SendCommandAndWaitForResponse(this, request);
     }
 
     // this one have watchdog
@@ -65,15 +49,11 @@ public class Esp32Device
         var response = SendRpcRequest(method, parameters, cancellationToken);
         var timeout = Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
         var task = await Task.WhenAny(response, timeout);
-        if (task == timeout)
-        {
-            throw new TimeoutException();
-        }
-        else if (task == response)
-        {
-            return await response;
-        }
+        if (task == timeout) throw new TimeoutException();
+        if (task == response) return await response;
 
+
+        // should never happen
         throw new InvalidOperationException();
     }
 
@@ -87,17 +67,8 @@ public class Esp32Device
 
     public async Task<object> GetBluetoothScan()
     {
-        if (IsScanning) throw new InvalidOperationException("Already scanning");
-        IsScanning = true;
-        try
-        {
-            var response = await SendRpcRequestSafe("bluetooth_start_scan");
-            return response.Result! ?? throw new InvalidOperationException();
-        }
-        finally
-        {
-            IsScanning = false;
-        }
+        var response = await SendRpcRequestSafe("bluetooth_start_scan");
+        return response.Result! ?? throw new InvalidOperationException();
     }
 
     public async Task<JObject> GetInfo()
@@ -113,19 +84,8 @@ public class Esp32Device
 
     public override bool Equals(object obj)
     {
-        if (obj is Esp32Device device)
-        {
-            return device.Uuid == Uuid;
-        }
+        if (obj is Esp32Device device) return device.Uuid == Uuid;
 
         return false;
-    }
-
-
-    public partial class ServiceDatum
-    {
-        [JsonProperty("data")] public long[] Data { get; set; }
-
-        [JsonProperty("uuid")] public string Uuid { get; set; }
     }
 }

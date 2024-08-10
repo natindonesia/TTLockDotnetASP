@@ -13,7 +13,7 @@ public class Esp32Response
 
     public Esp32Device? Device { get; set; }
 
-    public string DeviceUuid { get; set; }
+    public Guid DeviceUuid { get; set; }
 
     [JsonProperty("packet_type")] public Type PacketType { get; set; }
 

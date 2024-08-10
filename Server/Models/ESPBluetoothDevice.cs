@@ -3,9 +3,15 @@ using Shared;
 
 namespace Server.Models;
 
+// ITS STATELESS HAH
 public class ESPBluetoothDevice : IBluetoothDevice
 {
     [JsonIgnore] public Esp32Device Device;
+
+    public ESPBluetoothDevice(Esp32Device device)
+    {
+        Device = device;
+    }
 
     [JsonProperty("adv_flags")] public string AdvFlags { get; set; }
 
@@ -17,7 +23,7 @@ public class ESPBluetoothDevice : IBluetoothDevice
 
     [JsonProperty("rssi")] public long Rssi { get; set; }
 
-    [JsonProperty("service_data")] public Esp32Device.ServiceDatum[] ServiceData { get; set; }
+    [JsonProperty("service_data")] public ServiceDatum[] ServiceData { get; set; }
 
     [JsonProperty("service_uuids")] public string[] ServiceUuids { get; set; }
 
@@ -25,7 +31,6 @@ public class ESPBluetoothDevice : IBluetoothDevice
 
 
     [JsonProperty("raw_data")] public byte[] RawData { get; set; }
-
 
     public async Task<bool> HasService(string serviceUuid)
     {
@@ -62,5 +67,13 @@ public class ESPBluetoothDevice : IBluetoothDevice
 
     public async void Dispose()
     {
+    }
+
+
+    public partial class ServiceDatum
+    {
+        [JsonProperty("data")] public long[] Data { get; set; }
+
+        [JsonProperty("uuid")] public string Uuid { get; set; }
     }
 }

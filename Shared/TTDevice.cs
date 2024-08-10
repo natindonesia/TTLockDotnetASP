@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Newtonsoft.Json;
 using Shared.Api;
 using Shared.Entity;
 using Shared.Enums;
@@ -6,6 +7,7 @@ using Shared.Exceptions;
 
 namespace Shared;
 
+[JsonObject(MemberSerialization.OptIn)]
 public class TTDevice : IDisposable
 {
     public const sbyte GAP_ADTYPE_LOCAL_NAME_COMPLETE = 9; //!< Complete local name
@@ -47,8 +49,11 @@ public class TTDevice : IDisposable
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
-    public string Address = "";
-    protected sbyte BatteryCapacity = 0;
+
+    [JsonProperty] public string Address = "";
+
+    [JsonProperty] public sbyte BatteryCapacity = 0;
+
     protected long Date = 0;
 
     protected IBluetoothDevice Device;
@@ -81,12 +86,16 @@ public class TTDevice : IDisposable
         IsPowerSaver,
         IsRemoteControlDevice = false;
 
-    public TTLockData LockData = new TTLockData();
+    [JsonProperty] public TTLockData LockData = new TTLockData();
 
     public LockType LockType = LockType.UNKNOWN;
-    protected string Manufacturer = "unknown";
-    protected string Model = "unknown";
-    public string? Name = "unknown";
+
+    [JsonProperty] public string Manufacturer = "unknown";
+
+    [JsonProperty] public string Model = "unknown";
+
+    [JsonProperty] public string? Name = "unknown";
+
     protected byte OrgId = 0;
     protected int ParkStatus = 0;
     public sbyte ProtocolType = 0;
@@ -108,11 +117,11 @@ public class TTDevice : IDisposable
     }
 
 
-    public bool IsTelinkGatewayDfuMode { get; set; }
+    protected bool IsTelinkGatewayDfuMode { get; set; }
 
-    public GatewayType GatewayType { get; set; }
+    protected GatewayType GatewayType { get; set; }
 
-    public bool IsInitialized => LockData.PrivateData.AesKey.Length != 0 || !IsSettingMode;
+    [JsonProperty] public bool IsInitialized => LockData.PrivateData.AesKey.Length != 0 || !IsSettingMode;
 
     public void Dispose()
     {

@@ -20,9 +20,9 @@ public interface IEspCommunicationManagerService : IHostedService
     Task SendCommand(IEspDevice? device, RpcRequest command);
 
     /**
-     * Send a command to a device and wait for a response, if device is null, broadcast to all devices
+     * Send a command to a device and wait for a response
      */
-    Task<RpcResponse> SendCommandAndWaitForResponse(IEspDevice? device, RpcRequest command);
+    Task<RpcResponse> SendCommandAndWaitForResponse(IEspDevice device, RpcRequest command);
 
 
     /**
