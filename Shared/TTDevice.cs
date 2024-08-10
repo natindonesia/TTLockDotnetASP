@@ -400,12 +400,7 @@ FF: Type: Manufacture Data
     public async Task ReadBasicInfo()
     {
         Name = await Device.GetName();
-        if (Name != null && await Device.HasService("00001800-0000-1000-8000-00805f9b34fb"))
-        {
-            var data = await Device.ReadCharacteristic("00001800-0000-1000-8000-00805f9b34fb",
-                "0000a2a00-0000-1000-8000-00805f9b34fb");
-            Name = System.Text.Encoding.UTF8.GetString(data);
-        }
+
 
         if (await Device.HasService(DeviceInformationService))
         {

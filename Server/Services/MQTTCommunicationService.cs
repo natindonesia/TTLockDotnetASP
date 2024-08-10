@@ -14,7 +14,7 @@ namespace Server.Services;
 
 public sealed class MqttCommunicationService : IEspCommunicationManagerService, IHostedService
 {
-    private const string TopicPrefix = "esp32-ble-proxy/devices/";
+    public const string TopicPrefix = "esp32-ble-proxy/devices/";
     private readonly ILogger<MqttCommunicationService> _logger;
     private readonly IMqttClient _mqttClient;
     private readonly MqttClientOptions _mqttClientOptions;
@@ -113,6 +113,55 @@ public sealed class MqttCommunicationService : IEspCommunicationManagerService, 
     }
 
     private event EventHandler<Esp32Response>? EventHandler;
+
+    public static Esp32Response? ParseResponseAsync(MqttApplicationMessageReceivedEventArgs eventArgs)
+    {
+        var payload = eventArgs.ApplicationMessage.ConvertPayloadToString();
+        if (payload == null)
+        {
+            return null;
+        }
+
+        var response = JsonConvert.DeserializeObject<Esp32Response>(payload);
+        if (response == null)
+        {
+            return null;
+        }
+
+        response.Timestamp = DateTime.Now;
+        var topic = eventArgs.ApplicationMessage.Topic.Substring(TopicPrefix.Length);
+        // remove /*
+        topic = topic.Split("/")[0];
+
+        response.DeviceUuid = Guid.Parse(topic);
+        response.Data = payload;
+
+        if (response.PacketType == Esp32Response.Type.Response)
+        {
+            var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(response.Data);
+            if (rpcResponse == null)
+            {
+                return null;
+            }
+
+            rpcResponse.CopyFrom(response);
+            response = rpcResponse;
+        }
+
+        if (response.PacketType == Esp32Response.Type.Event)
+        {
+            var esp32Event = JsonConvert.DeserializeObject<Esp32Event>(response.Data);
+            if (esp32Event == null)
+            {
+                return null;
+            }
+
+            esp32Event.CopyFrom(response);
+            response = esp32Event;
+        }
+
+        return response;
+    }
 
     private async Task OnMqttApplicationMessageReceivedEventArgs(MqttApplicationMessageReceivedEventArgs e)
     {
