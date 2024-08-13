@@ -4,27 +4,30 @@ namespace Shared;
 
 public class LockVersion
 {
-    public static readonly LockVersion? lockVersion_V2S_PLUS = new LockVersion(5, 4, 1, 1, 1);
-    public static readonly LockVersion? lockVersion_V3 = new LockVersion(5, 3, 1, 1, 1);
-    public static readonly LockVersion? lockVersion_V2S = new LockVersion(5, 1, 1, 1, 1);
+    public static readonly LockVersion lockVersion_V2S_PLUS = new LockVersion(5, 4, 1, 1, 1);
+    public static readonly LockVersion lockVersion_V3 = new LockVersion(5, 3, 1, 1, 1);
+    public static readonly LockVersion lockVersion_V2S = new LockVersion(5, 1, 1, 1, 1);
+
     /**
      * The second-generation parking lock scene is also changed to 7
      */
-    public static readonly LockVersion? lockVersion_Va = new LockVersion(0x0a, 1, 0x07, 1, 1);
+    public static readonly LockVersion lockVersion_Va = new LockVersion(0x0a, 1, 0x07, 1, 1);
+
     /**
      * The electric car lock scene will be changed to 1 and there is no electric car lock
      */
-    public static readonly LockVersion? lockVersion_Vb = new LockVersion(0x0b, 1, 0x01, 1, 1);
-    public static readonly LockVersion? lockVersion_V2 = new LockVersion(3, 0, 0, 0, 0);
-    public static readonly LockVersion? lockVersion_V3_car = new LockVersion(5, 3, 7, 1, 1);
+    public static readonly LockVersion lockVersion_Vb = new LockVersion(0x0b, 1, 0x01, 1, 1);
 
-    private int protocolType;
-    private int protocolVersion;
-    private int scene;
-    private int groupId;
-    private int orgId;
+    public static readonly LockVersion lockVersion_V2 = new LockVersion(3, 0, 0, 0, 0);
+    public static readonly LockVersion lockVersion_V3_car = new LockVersion(5, 3, 7, 1, 1);
+    private short groupId;
+    private short orgId;
 
-    public LockVersion(int protocolType, int protocolVersion, int scene, int groupId, int orgId)
+    private sbyte protocolType;
+    private sbyte protocolVersion;
+    private sbyte scene;
+
+    public LockVersion(sbyte protocolType, sbyte protocolVersion, sbyte scene, short groupId, short orgId)
     {
         this.protocolType = protocolType;
         this.protocolVersion = protocolVersion;
@@ -33,20 +36,20 @@ public class LockVersion
         this.orgId = orgId;
     }
 
-    public int GetProtocolType() => protocolType;
-    public void SetProtocolType(int protocolType) => this.protocolType = protocolType;
+    public sbyte getProtocolType() => protocolType;
+    public void setProtocolType(sbyte protocolType) => this.protocolType = protocolType;
 
-    public int GetProtocolVersion() => protocolVersion;
-    public void SetProtocolVersion(int protocolVersion) => this.protocolVersion = protocolVersion;
+    public sbyte getProtocolVersion() => protocolVersion;
+    public void setProtocolVersion(sbyte protocolVersion) => this.protocolVersion = protocolVersion;
 
-    public int GetScene() => scene;
-    public void SetScene(int scene) => this.scene = scene;
+    public sbyte getScene() => scene;
+    public void setScene(sbyte scene) => this.scene = scene;
 
-    public int GetGroupId() => groupId;
-    public void SetGroupId(int groupId) => this.groupId = groupId;
+    public short getGroupId() => groupId;
+    public void setGroupId(short groupId) => this.groupId = groupId;
 
-    public int GetOrgId() => orgId;
-    public void SetOrgId(int orgId) => this.orgId = orgId;
+    public short getOrgId() => orgId;
+    public void setOrgId(short orgId) => this.orgId = orgId;
 
     public static LockVersion? GetLockVersion(LockType lockType)
     {
@@ -88,11 +91,12 @@ public class LockVersion
                 ttDevice.LockType = LockType.LOCK_TYPE_V3;
             }
             else if ((ttDevice.ProtocolType == 5 && ttDevice.ProtocolVersion == 1) ||
-                      (ttDevice.Name != null && ttDevice.Name.ToUpper().StartsWith("LOCK_")))
+                     (ttDevice.Name != null && ttDevice.Name.ToUpper().StartsWith("LOCK_")))
             {
                 ttDevice.LockType = LockType.LOCK_TYPE_V2S;
             }
         }
+
         return ttDevice.LockType;
     }
 

@@ -2,19 +2,14 @@ using Newtonsoft.Json;
 
 namespace Server.Net.Packets;
 
-public class Event : ESP32Response
+public class Esp32Event : Esp32Response
 {
+    [JsonProperty("name")] public string Name { get; set; }
 
-    [JsonProperty("name")]
-    public string Name { get; set; }
-
-    [JsonProperty("data")]
-    public object Data { get; set; }
 
     public override string ToString()
     {
         return $"{Name}: {Data}";
-
     }
 
     public T? GetData<T>()

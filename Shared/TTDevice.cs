@@ -1,49 +1,15 @@
+using System.Collections.Concurrent;
+using Newtonsoft.Json;
+using Shared.Api;
+using Shared.Entity;
 using Shared.Enums;
+using Shared.Exceptions;
 
 namespace Shared;
 
+[JsonObject(MemberSerialization.OptIn)]
 public class TTDevice : IDisposable
 {
-    protected string Id = "";
-    protected string Uuid = "";
-    public string Name = "unknown";
-    protected string Manufacturer = "unknown";
-    protected string Model = "unknown";
-    protected string Hardware = "unknown";
-    protected string Firmware = "unknown";
-    protected string Address = "";
-    protected string Rssi = "0";
-    public sbyte ProtocolType = 0;
-    public sbyte ProtocolVersion = 0;
-    public sbyte Scene = 0;
-    protected byte GroupId = 0;
-    protected byte OrgId = 0;
-    public LockType LockType = LockType.UNKNOWN;
-    protected bool IsTouch = false;
-    protected bool IsUnlock = false;
-    protected bool HasEvents = true;
-    protected bool IsSettingMode = false;
-    protected sbyte TxPowerLevel = 0;
-    protected sbyte BatteryCapacity = 0;
-    protected long Date = 0;
-
-    protected bool IsWristband,
-        IsRoomLock,
-        IsSafeLock,
-        IsBicycleLock,
-        IsLockCar,
-        IsGlassLock,
-        IsPadlock,
-        IsCylinder,
-        IsLift,
-        IsPowerSaver,
-        IsRemoteControlDevice = false;
-
-    protected bool IsDfuMode = false;
-    protected bool IsNoLockService = false;
-    protected int RemoteUnlockSwitch = 0;
-    protected int DisconnectStatus = 0;
-    protected int ParkStatus = 0;
     public const sbyte GAP_ADTYPE_LOCAL_NAME_COMPLETE = 9; //!< Complete local name
     public const sbyte GAP_ADTYPE_POWER_LEVEL = 10; //!< TX Power Level: 0xXX: -127 to +127 dBm
 
@@ -69,10 +35,78 @@ public class TTDevice : IDisposable
      */
     public const sbyte STATUS_PARK_UNLOCK_HAS_CAR = 3;
 
-    protected IBluetoothDevice Device;
+    public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
+    public static readonly String UuidService = "00001910-0000-1000-8000-00805f9b34fb";
+    public static readonly String UuidWrite = "0000fff2-0000-1000-8000-00805f9b34fb";
+    public static readonly String UuidRead = "0000fff4-0000-1000-8000-00805f9b34fb";
+
+
+    private static readonly String DeviceInformationService = "0000180a-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadModelNumberUuid = "00002a24-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadFirmwareRevisionUuid = "00002a26-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadHardwareRevisionUuid = "00002a27-0000-1000-8000-00805f9b34fb";
+    private static readonly String ReadManufacturerNameUuid = "00002a29-0000-1000-8000-00805f9b34fb";
 
     // originally from Java where Byte is -128 to 127 and C# Byte is 0 to 255
     protected readonly sbyte[] ScanRecord;
+
+    [JsonProperty] public string Address = "";
+
+    [JsonProperty] public sbyte BatteryCapacity = 0;
+
+    protected long Date = 0;
+
+    protected IBluetoothDevice Device;
+    protected int DisconnectStatus = 0;
+    protected string Firmware = "unknown";
+    protected byte GroupId = 0;
+    protected string Hardware = "unknown";
+    protected bool HasEvents = true;
+    protected string Id = "";
+
+    protected byte[] IncomingData = [];
+
+    protected volatile bool IsConnected = false;
+
+    protected bool IsDfuMode = false;
+    protected bool IsNoLockService = false;
+    protected bool IsSettingMode = false;
+    protected bool IsTouch = false;
+    protected bool IsUnlock = false;
+
+    protected bool IsWristband,
+        IsRoomLock,
+        IsSafeLock,
+        IsBicycleLock,
+        IsLockCar,
+        IsGlassLock,
+        IsPadlock,
+        IsCylinder,
+        IsLift,
+        IsPowerSaver,
+        IsRemoteControlDevice = false;
+
+    [JsonProperty] public TTLockData LockData = new TTLockData();
+
+    public LockType LockType = LockType.UNKNOWN;
+
+    [JsonProperty] public string Manufacturer = "unknown";
+
+    [JsonProperty] public string Model = "unknown";
+
+    [JsonProperty] public string? Name = "unknown";
+
+    protected byte OrgId = 0;
+    protected int ParkStatus = 0;
+    public sbyte ProtocolType = 0;
+    public sbyte ProtocolVersion = 0;
+    protected int RemoteUnlockSwitch = 0;
+
+    protected ConcurrentQueue<Command> ResponseQueue = new ConcurrentQueue<Command>();
+    protected string Rssi = "0";
+    public sbyte Scene = 0;
+    protected sbyte TxPowerLevel = 0;
+    protected string Uuid = "";
 
     public TTDevice(IBluetoothDevice device)
     {
@@ -80,6 +114,18 @@ public class TTDevice : IDisposable
         for (var i = 0; i < device.RawData.Length; i++) ScanRecord[i] = (sbyte) device.RawData[i];
         Device = device;
         Initialize();
+    }
+
+
+    protected bool IsTelinkGatewayDfuMode { get; set; }
+
+    protected GatewayType GatewayType { get; set; }
+
+    [JsonProperty] public bool IsInitialized => LockData.PrivateData.AesKey.Length != 0 || !IsSettingMode;
+
+    public void Dispose()
+    {
+        Device.Dispose();
     }
 
     /**
@@ -223,7 +269,7 @@ FF: Type: Manufacture Data
                         // convert to bytes
                         var macAddress = new byte[6];
                         for (var i = 0; i < 6; i++) macAddress[i] = (byte) macAddressBytes[i];
-                        Address = BitConverter.ToString(macAddress).Replace("-", ":");
+                        //Address = BitConverter.ToString(macAddress).Replace("-", ":");
                     }
 
                     break;
@@ -278,29 +324,20 @@ FF: Type: Manufacture Data
         }
     }
 
-
-    public bool IsTelinkGatewayDfuMode { get; set; }
-
-    public GatewayType GatewayType { get; set; }
-
     public static TTDevice? FromBluetoothDevice(IBluetoothDevice device)
     {
         try
         {
             return new TTDevice(device);
         }
-        catch (Exception ex) when(
+        catch (Exception ex) when (
             ex is ArgumentException ||
             ex is IndexOutOfRangeException
-            )
+        )
         {
             return null;
         }
     }
-
-    protected byte[] IncomingData = [];
-
-    public static readonly byte[] CRLF = new byte[] {0x0D, 0x0A};
 
     //TODO: Second generation
     ////Connecting directly based on mac address does not have scanning information. The data here is inaccurate
@@ -323,60 +360,160 @@ FF: Type: Manufacture Data
 
     protected void OnIncomingData(byte[] data)
     {
-        IncomingData = IncomingData.Concat(data).ToArray();
-        if (IncomingData.Length >= 2)
+        try
         {
+            IncomingData = IncomingData.Concat(data).ToArray();
+            if (IncomingData.Length < 2) return;
             // get last 2 bytes
             var ending = IncomingData.Skip(IncomingData.Length - 2).ToArray();
-            if (ending.SequenceEqual(CRLF))
-            {
-                // we have a complete message
-                var message = System.Text.Encoding.UTF8.GetString(IncomingData);
-                Console.WriteLine($"Received: {message}");
-                IncomingData = [];
-            }
+            if (!ending.SequenceEqual(CRLF)) return;
+            // format in hex
+            var hex = BitConverter.ToString(IncomingData).Replace("-", " ");
+            Console.WriteLine($"Incoming data: ({hex})");
+
+            // remove CRLF
+            IncomingData = IncomingData.Take(IncomingData.Length - 2).ToArray();
+
+            var command = new Command(IncomingData);
+            ResponseQueue.Enqueue(command);
+
+
+            IncomingData = [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Failed to process incoming data");
+            Console.WriteLine(ex);
         }
     }
-
-    protected bool IsConnected = false;
 
     public async Task Connect()
     {
         if (IsConnected) return;
+        await Device.OnDisconnected(() => IsConnected = false);
         await ReadBasicInfo();
 
-        await Device.SubscribeCharacteristic("1910", "FFF4", OnIncomingData);
+        await Device.SubscribeCharacteristic(UuidService, UuidRead, OnIncomingData);
         IsConnected = true;
     }
 
     public async Task ReadBasicInfo()
     {
-        if (await Device.HasService("1800"))
-        {
-            var data = await Device.ReadCharacteristic("1800", "2A00");
-            Name = System.Text.Encoding.UTF8.GetString(data);
-        }
+        Name = await Device.GetName();
 
-        if (await Device.HasService("180A"))
+
+        if (await Device.HasService(DeviceInformationService))
         {
-            var data = await Device.ReadCharacteristic("180A", "2A24");
+            var data = await Device.ReadCharacteristic(DeviceInformationService, ReadModelNumberUuid);
             Model = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A26");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadFirmwareRevisionUuid);
             Firmware = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A27");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadHardwareRevisionUuid);
             Hardware = System.Text.Encoding.UTF8.GetString(data);
-            data = await Device.ReadCharacteristic("180A", "2A29");
+            data = await Device.ReadCharacteristic(DeviceInformationService, ReadManufacturerNameUuid);
             Manufacturer = System.Text.Encoding.UTF8.GetString(data);
+            LockData.Address = Address;
         }
     }
+
+    public async Task SendCommand(Command command, bool ignoreCrc = false)
+    {
+        await Connect();
+        var data = command.BuildCommand();
+        // add CRLF to the end
+        data = data.Concat(CRLF).ToArray();
+#if DEBUG
+        var hex = BitConverter.ToString(data).Replace("-", " ");
+        Console.WriteLine($"Sending command: {command.GetCommandType()} ({hex})");
+
+#endif
+        await Device.WriteCharacteristic(UuidService, UuidWrite, data);
+    }
+
+
+    public async Task<Command> SendCommandAndWait(Command command, bool ignoreCrc = false)
+    {
+        await SendCommand(command, ignoreCrc);
+        var timeout = 5000;
+        var start = DateTime.Now;
+        while (DateTime.Now - start < TimeSpan.FromMilliseconds(timeout))
+        {
+            if (ResponseQueue.TryDequeue(out var response))
+            {
+                if (!response.isChecksumValid())
+                {
+                    throw new BaseException("Checksum is invalid");
+                }
+
+                return response;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Command timed out waiting for response");
+    }
+
 
     public override string ToString()
     {
         return $"TTDevice: {Name} ({Address}) - {LockType}";
     }
 
-    public void Dispose()
+    public async Task InitLock()
     {
-        Device.Dispose();
+        Console.WriteLine("Init lock");
+        await TTLockAPI.Init(this);
+        var aes = await TTLockAPI.GetAesKey(this);
+        LockData.PrivateData.AesKey = aes;
+
+        var admin = await TTLockAPI.AddAdmin(this);
+
+        await TTLockAPI.CalibrationTime(this);
+
+        var featuresCommand = await TTLockAPI.DeviceFeatures(this);
+        var features = featuresCommand.GetFeaturesList();
+        foreach (var feature in features)
+        {
+            Console.WriteLine($"Feature: {feature}");
+        }
+
+        LockData.Features = features;
+
+        ushort autoLockTime = 0;
+        if (features.Contains(FeatureValue.AUTO_LOCK))
+        {
+            var autoLockCommand = await TTLockAPI.AutoLockManage(this, autoLockTime);
+            autoLockTime = (ushort) autoLockCommand.GetTime();
+        }
+
+
+        if (LockType == LockType.LOCK_TYPE_V3)
+        {
+            LockData.PrivateData.AdminPasscode = await TTLockAPI.SetAdminKeyboardPwdCommand(this);
+        }
+
+        await TTLockAPI.OperateFinished(this);
+
+        LockData.PrivateData.Admin = admin.GetAdminData();
+        this.IsSettingMode = false;
+    }
+
+    public byte[] GetAesKeyArray()
+    {
+        return this.LockData.PrivateData.AesKey.Length != 0
+            ? this.LockData.PrivateData.AesKey
+            : TTLockAPI.DefaultAesKeyArray;
+    }
+
+
+    public async Task Unlock()
+    {
+        var psFromLock = await TTLockAPI.CheckUserTime(this);
+        Console.WriteLine($"Unlocking with psFromLock: {psFromLock}");
+
+        var unlockCommand = await TTLockAPI.Unlock(this, psFromLock);
+        if (unlockCommand.BatteryCapacity.HasValue)
+            BatteryCapacity = (sbyte) unlockCommand.BatteryCapacity.Value;
     }
 }

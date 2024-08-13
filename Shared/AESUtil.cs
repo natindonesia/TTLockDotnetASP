@@ -1,4 +1,5 @@
 namespace Shared;
+
 using System;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,64 +14,143 @@ public static class AESUtil
         0x78, 0x12, 0x45, 0x88
     };
 
-    public static byte[] AESEncrypt(byte[] source, byte[]? key = null)
+    private static readonly bool DBG = true;
+
+    public static byte[] AesEncrypt(byte[] source, byte[] aesKeyArray)
     {
-        if (source.Length == 0)
-        {
-            return new byte[0];
-        }
-
-        key ??= DefaultAESKey;
-
-        if (key.Length != 16)
-        {
-            throw new ArgumentException("Invalid key size: " + key.Length);
-        }
-
-        using Aes aes = Aes.Create();
-        aes.Key = key;
-        aes.IV = key;
-
-        using ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-        return PerformCryptography(source, encryptor);
-    }
-
-    public static byte[] AESDecrypt(byte[] source, byte[]? key = null)
-    {
-        if (source.Length == 0)
-        {
-            return new byte[0];
-        }
-
-        key ??= DefaultAESKey;
-
-        if (key.Length != 16)
-        {
-            throw new ArgumentException("Invalid key size: " + key.Length);
-        }
-
-        using Aes aes = Aes.Create();
-        aes.Key = key;
-        aes.IV = key;
-
-        using ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+        byte[] encryptResArray = null;
         try
         {
-            return PerformCryptography(source, decryptor);
+            // LogUtil.D("aesKey:" + BitConverter.ToString(aesKeyArray).Replace("-", ""), true);
+            encryptResArray = Encrypt(source, aesKeyArray, aesKeyArray);
         }
-        catch (CryptographicException ex)
+        catch (Exception e)
         {
-            Console.WriteLine(ex);
-            throw new Exception("Decryption failed");
+            Console.WriteLine(e);
+        }
+
+        // LogUtil.D("encryptResArray=" + BitConverter.ToString(encryptResArray).Replace("-", ""), DBG);
+        return encryptResArray;
+    }
+
+    public static byte[] AesDecrypt(byte[] source, byte[] aesKeyArray)
+    {
+        byte[] decryptResArray = null;
+        try
+        {
+            // LogUtil.D("aesKey:" + BitConverter.ToString(aesKeyArray).Replace("-", ""), true);
+            decryptResArray = Decrypt(source, aesKeyArray, aesKeyArray);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+
+        return decryptResArray;
+    }
+
+    private static byte[] Encrypt(byte[] source, byte[] key, byte[] iv)
+    {
+        if (key == null)
+        {
+            LogUtilW("Key is null", DBG);
+            return null;
+        }
+
+        if (key.Length != 16)
+        {
+            LogUtilW("the length of Key is not 16", DBG);
+            return null;
+        }
+
+        if (iv.Length != 16)
+        {
+            LogUtilW("the length of IV vector is not 16", DBG);
+            return null;
+        }
+
+        using (Aes aes = Aes.Create())
+        {
+            aes.Key = key;
+            aes.IV = iv;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+
+            using (var encryptor = aes.CreateEncryptor(aes.Key, aes.IV))
+            {
+                return PerformCryptography(source, encryptor);
+            }
+        }
+    }
+
+    private static byte[] Decrypt(byte[] source, byte[] key, byte[] iv)
+    {
+        if (key == null)
+        {
+            LogUtilE("Key is null", DBG);
+            return null;
+        }
+
+        if (key.Length != 16)
+        {
+            LogUtilE("the length of Key is not 16", DBG);
+            return null;
+        }
+
+        if (iv.Length != 16)
+        {
+            LogUtilE("the length of IV vector is not 16", DBG);
+            return null;
+        }
+
+        using (Aes aes = Aes.Create())
+        {
+            aes.Key = key;
+            aes.IV = iv;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+
+            using (var decryptor = aes.CreateDecryptor(aes.Key, aes.IV))
+            {
+                try
+                {
+                    return PerformCryptography(source, decryptor);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    return null;
+                }
+            }
         }
     }
 
     private static byte[] PerformCryptography(byte[] data, ICryptoTransform cryptoTransform)
     {
-        using System.IO.MemoryStream memoryStream = new System.IO.MemoryStream();
-        using CryptoStream cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write);
-        cryptoStream.Write(data, 0, data.Length);
-        cryptoStream.FlushFinalBlock();
-        return memoryStream.ToArray();
+        using (MemoryStream memoryStream = new MemoryStream())
+        {
+            using (CryptoStream cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write))
+            {
+                cryptoStream.Write(data, 0, data.Length);
+                cryptoStream.FlushFinalBlock();
+                return memoryStream.ToArray();
+            }
+        }
+    }
+
+    private static void LogUtilW(string message, bool debug)
+    {
+        if (debug)
+        {
+            Console.WriteLine("Warning: " + message);
+        }
+    }
+
+    private static void LogUtilE(string message, bool debug)
+    {
+        if (debug)
+        {
+            Console.WriteLine("Error: " + message);
+        }
     }
 }

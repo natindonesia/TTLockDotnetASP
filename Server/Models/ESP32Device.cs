@@ -11,43 +11,26 @@ using Shared.Enums;
 
 namespace Server.Models;
 
-public class Esp32Device
+public class Esp32Device : IEspDevice
 {
+    private readonly IEspCommunicationManagerService _communicationManagerService;
 
-    public string? Uuid { get; set; }
-    public TcpClient Client { get; set; }
-
-
-    protected bool IsScanning = false;
-    protected bool IsBusy = false;
-    protected readonly Esp32ServerService ESP32ServerService;
-    protected List<ESPBluetoothDevice> BluetoothDevices = new();
-
-
-    public Esp32Device(TcpClient client, Esp32ServerService serverService)
+    public Esp32Device(IEspCommunicationManagerService communicationManagerService, Guid uuid)
     {
-        Client = client;
-        ESP32ServerService = serverService;
+        _communicationManagerService = communicationManagerService;
+        Uuid = uuid;
     }
 
-    public async Task Initialize()
+    public Guid Uuid { get; set; }
+
+    public void OnDeviceNotResponding()
     {
-        Uuid = await GetUuid();
-
     }
-
-    public void OnEvent(Event @event)
-    {
-
-    }
-
-
 
 
     public async Task<RpcResponse> SendRpcRequest(string method, Dictionary<string, object>? parameters = null,
         CancellationToken cancellationToken = default)
     {
-
         parameters ??= new Dictionary<string, object>();
         var request = new RpcRequest
         {
@@ -56,27 +39,21 @@ public class Esp32Device
             Params = parameters
         };
 
-        var requestJson = JsonConvert.SerializeObject(request);
-        var requestBytes = Encoding.UTF8.GetBytes(requestJson + "\n");
-        var stream = Client.GetStream();
-        await stream.WriteAsync(requestBytes, cancellationToken);
-        return await ESP32ServerService.WaitForResponse(request.Id, TimeSpan.FromSeconds(30), cancellationToken);
+        return await _communicationManagerService.SendCommandAndWaitForResponse(this, request);
     }
 
     // this one have watchdog
     public async Task<RpcResponse> SendRpcRequestSafe(string method, Dictionary<string, object>? parameters = null,
-        CancellationToken cancellationToken = default){
+        CancellationToken cancellationToken = default)
+    {
         var response = SendRpcRequest(method, parameters, cancellationToken);
         var timeout = Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
         var task = await Task.WhenAny(response, timeout);
-        if (task == timeout)
-        {
-            throw new TimeoutException();
-        }else if (task == response)
-        {
-            return await response;
-        }
+        if (task == timeout) throw new TimeoutException();
+        if (task == response) return await response;
 
+
+        // should never happen
         throw new InvalidOperationException();
     }
 
@@ -88,25 +65,16 @@ public class Esp32Device
     }
 
 
-
     public async Task<object> GetBluetoothScan()
     {
-        if(IsScanning) throw new InvalidOperationException("Already scanning");
-        IsScanning = true;
-        try
-        {
-            var response = await SendRpcRequestSafe("bluetooth_start_scan");
-            return response.Result! ?? throw new InvalidOperationException();
-        }finally
-        {
-            IsScanning = false;
-        }
+        var response = await SendRpcRequestSafe("bluetooth_start_scan");
+        return response.Result! ?? throw new InvalidOperationException();
     }
 
     public async Task<JObject> GetInfo()
     {
         var response = await SendRpcRequestSafe("get_info");
-        return (JObject)response.Result! ?? throw new InvalidOperationException();
+        return (JObject) response.Result! ?? throw new InvalidOperationException();
     }
 
     public override string ToString()
@@ -114,53 +82,10 @@ public class Esp32Device
         return $"UUID: {Uuid}";
     }
 
-
-    public class BluetoothDevice
-    {
-        [JsonProperty("address")]
-        public string Address { get; set; }
-
-        [JsonProperty("adv_flags")]
-        public string AdvFlags { get; set; }
-
-        [JsonProperty("adv_type")]
-        public string AdvType { get; set; }
-
-        [JsonProperty("manufacture_data")]
-        public long[] ManufactureData { get; set; }
-
-        [JsonProperty("name")]
-        public string Name { get; set; }
-
-        [JsonProperty("rssi")]
-        public long Rssi { get; set; }
-
-        [JsonProperty("service_data")]
-        public ServiceDatum[] ServiceData { get; set; }
-
-        [JsonProperty("service_uuids")]
-        public string[] ServiceUuids { get; set; }
-
-        [JsonProperty("raw_data")]
-        public byte[] RawData { get; set; }
-    }
-
-    public partial class ServiceDatum
-    {
-        [JsonProperty("data")]
-        public long[] Data { get; set; }
-
-        [JsonProperty("uuid")]
-        public string Uuid { get; set; }
-    }
     public override bool Equals(object obj)
     {
-        if (obj is Esp32Device device)
-        {
-            return device.Uuid == Uuid;
-        }
+        if (obj is Esp32Device device) return device.Uuid == Uuid;
+
         return false;
     }
-
-
 }
